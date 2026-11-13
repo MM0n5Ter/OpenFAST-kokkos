@@ -1,0 +1,4 @@
+[submodule "deps/openfast"]
+	path = deps/openfast
+	url = https://github.com/OpenFAST/openfast.git
+	shallow = true
