@@ -21,7 +21,17 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure          # on CUDA: OFK_L0_RTOL=1e-10
 ```
 
-**Checked so far (2026-11-12):**
+**Checked on 2026-11-14 with real Kokkos** (5.3.0, shared C++20 installs, gcc 12.3):
+- Kokkos-OpenMP, 8 threads: `l0_ui_part` passes 206/206 for seeds 1 and 7, at relative error 0. `ctest`: 2/2 pass.
+- Kokkos-CUDA (sm_90) builds on the login node, and passes on the H100 (job 1858536): 206/206, worst relative error 2.3e-18, `capi_smoke` OK.
+- With 4.5.1 (superseded), the H100 run passed: worst relative error 2.3e-18, `capi_smoke` OK.
+- Fixes needed on the way:
+  - `find_package(Kokkos 5.3...<6)` (no bare major version);
+  - `enable_testing()`, without which ctest found no tests;
+  - `rename_modules.py` now creates the output directory.
+- Note: the toy hard-codes `MINNORM2 = 1e-8` on both sides. The real OLAF port passes `MINNORM` from the Fortran instead, because its value depends on `-fdefault-real-8` (notes/olaf-placement.md §6 #1).
+
+**Checked earlier (2026-11-12):**
 - The Fortran side was compiled with gfortran 12.3 (`-fcheck=all`) and linked against a plain serial C++ stand-in for `ofk_toy_ui_part`.
 - The stand-in was not Kokkos, so `toy_biotsavart_kokkos.cpp`, `ofk_runtime.cpp` and `CMakeLists.txt` have **not** been built yet.
 - Results:

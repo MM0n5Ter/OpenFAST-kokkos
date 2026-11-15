@@ -35,6 +35,12 @@
    - Fortran: gfortran (gcc 12.3). OpenFAST's CMake accepts only GNU, Intel or Flang (`cmake/OpenfastFortranOptions.cmake:48-52`), so nvfortran is out.
    - C++: g++ for the Kokkos-OpenMP build, `nvcc_wrapper` for the Kokkos-CUDA build. See [build-kokkos-fortran.md](build-kokkos-fortran.md).
 6. **Kokkos 5.3.0, built from source** (the cluster has no Kokkos module). It needs CMake ≥ 3.22, GCC ≥ 10.4, NVCC ≥ 12.2 and C++20.
+   - **Built 2026-11-14** (gcc 12.3, cuda 12.3, cmake 3.31.12), shared libraries, C++20:
+     - `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/kokkos-5.3.0-omp` (Serial + OpenMP);
+     - `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/kokkos-5.3.0-cuda-h100` (CUDA sm_90 + OpenMP + Serial).
+   - Recipe: `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/build/build-kokkos-5.3.0.sh omp|cuda-h100`. Source: the release tarball, sha256 `f1875cac…ef88`.
+   - Code is C++20, and CMake uses `find_package(Kokkos 5.3...<6)`. The earlier 4.5.1 installs are superseded; do not use them.
+   - CUDA code is **compiled on the login node** (nvcc from `module load cuda/12.3.0`). Only runs need a GPU job.
    - Two installs: OpenMP, and CUDA (one per GPU architecture).
    - The port initializes Kokkos lazily on first use, because its callers cannot be edited.
 7. **Three gates per commit:**
@@ -45,14 +51,53 @@
 9. **Four people work in four lanes.**
    - Lanes conflict only on shared files: CMake files, registry files, and module-level variables. Each shared file has exactly one owner, and all build changes go through Lane A.
    - One unit = one branch = one PR, merged only when all gates pass.
-10. **We report agent cost and effort per unit:** tokens, dollars, E_k (from ParEval-Repo), and the number of human interventions.
+10. **We report agent cost and effort per unit, in money and time:**
+    - tokens and dollars (USD API-equivalent), plus GPU/CPU hours;
+    - agent wall and active hours, and human minutes;
+    - E_k (from ParEval-Repo) and the number of human interventions.
+
+    Every session appends a row to `tools/cost/ledger.csv` (criteria.md E1–E7, `tools/cost/README.md`).
+12. **Reproducibility: strict and fast modes from one source; no CPU↔GPU bitwise requirement** (user, 2026-11-14).
+    - Bitwise agreement with the Fortran is required only of the strict mode on the CPU, where it proves the translation is faithful.
+    - The fast mode (the default) may reorder sums, use FMA and change data layout. It is held to bounded error against strict, to run-to-run determinism, and to R8 at simulation level.
+    - Reasons:
+      - GPU speed needs reorganized data and order;
+      - a bitwise copy of the Fortran is not proof of correctness, because the Fortran's own results vary with compiler, flags and OpenMP.
+    - Details: [architecture.md](architecture.md).
+13. **Three units establish the architecture** (user, 2026-11-14):
+    1. the direct kernels;
+    2. `InducedVelocitiesAll_*` plus lifting-line induction, running end to end in the fork;
+    3. the particle treecode.
+
+    After them, a working architecture must exist that carries every high-level idea, even if it is not perfect. Each unit is ported by a fresh-context subagent.
 11. **Precision.** Target `DOUBLE_PRECISION=ON` (ReKi = 8 bytes, the default). The single-precision build must keep compiling, since upstream just added single-precision unit tests (#3511, the pinned commit). The C++ side picks its real type from the `OPENFAST_DOUBLE_PRECISION` macro that OpenFAST already defines for all languages.
 
 ## Open items / TODO
-- [ ] **Where does the port live?** Recommendation: a fork (`MM0n5Ter/openfast`, branch `kokkos`) added as a second submodule, so the work can be offered upstream as a PR. `deps/openfast` stays the untouched baseline either way.
-- [ ] Build both Kokkos installs and run `examples/fortran-kokkos` on them (OpenMP on a login node, CUDA on an `a100` node). Until then, [build-kokkos-fortran.md](build-kokkos-fortran.md) is unverified.
-- [ ] Choose the compiler setup for the CUDA build: `nvcc_wrapper` for the whole configure, or `kokkos_compilation(TARGET ofk_kernels)`. See [build-kokkos-fortran.md](build-kokkos-fortran.md) §5.
+- [x] **Where does the port live? An overlay in this repo, not a fork** (user, 2026-11-14, replacing the same day's fork decision).
+  - **Changed files** are full copies at OpenFAST's own relative paths under `src/modules/<mod>/src/`. **New C++** goes in `src/modules/kokkos/`.
+  - `src/cmake/ofk_overlay.cmake` is injected into OpenFAST's unmodified CMake (`-DCMAKE_PROJECT_INCLUDE`). It swaps the overlay files into the module targets and links `ofk_kernels`.
+  - `deps/openfast` stays the untouched reference and build source.
+  - Reason: we only touch a few module files, not the whole of OpenFAST. The overlay shows exactly what changed.
+  - The earlier local `fork/` submodule (never pushed) is being migrated; see `notes/overlay.md` when it exists. Its directory stays on disk until the queued GPU jobs that read it have run.
+- [x] Build both Kokkos installs and run `examples/fortran-kokkos` on them. Done with 5.3.0 (decision #6). The CUDA run is on h100 rather than a100.
+- [x] Compiler setup for the CUDA build: keep g++, and call `kokkos_compilation(GLOBAL)` in `fork/modules/kokkos` (unit 1). A global `nvcc_wrapper` fails on OpenFAST's `awae/src/vtk.cpp` (`fast_float.h` incomplete type).
+- [x] **FMA in fast mode: keep it** (user, 2026-11-14). Where FMA moves results more than the class bound, the bound for chain claim 3 is **1.1 × the pin Fortran's own FMA-vs-no-FMA spread on the same inputs** (`l0_*_ffma`).
+  - Unit 1's `ui_seg`: 1.1e-11 on random targets placed near the segment line. The Fortran built with FMA moves by the same amount.
+  - Unit 2, realistic lattices: 8.2e-14, the same as the Fortran with FMA.
 - [ ] Build a scaled OLAF performance case: scale up `ad_BAR_OLAF` or `ad_B1n2_OLAF`, or ask NLR for the OC7 Phase III case.
 - [ ] Baseline r-test on our cluster at `OMP_NUM_THREADS=1`. Record known failures and timings before any change.
 - [ ] Check whether FAST.Farm cases can run OLAF per turbine. If yes, FAST.Farm joins the API gate for the OLAF unit.
 - [ ] Assign people to lanes.
+- [x] **Kokkos version:** 5.3.0, as decision #6 says (user, 2026-11-14). It is built, and the template passes on it.
+- [x] Run the toy on an h100.
+  - Kokkos 4.5.1: job 1852028 passed. L0 206/206 at worst relative error 2.3e-18, `capi_smoke` OK.
+  - Kokkos 5.3.0: job 1858536 **passed** (H100 NVL): L0 206/206, worst relative error 2.3e-18, `capi_smoke` OK.
+- [ ] **CPU particle kernels: bitwise or vectorized?** (`tests/biotsavart-direct/unit.md`)
+  - On Kokkos-OpenMP, `ui_part_nograd` is class B (bitwise against the OPENMP=OFF Fortran), but it runs at only 0.48–0.91× the Fortran built with `-fopenmp`, which vectorizes with `!$OMP SIMD reduction`. That fails P2 (≥ 0.95×).
+  - Options:
+    - (a) keep B and accept the gap;
+    - (b) vectorize like the Fortran (class R1, about 1e-15);
+    - (c) a runtime switch.
+  - `ui_seg` is at 1.02×.
+- [ ] Per-call device allocation in the direct kernels (P6 FAIL). The fix is a persistent handle held by `InducedVelocitiesAll_*` / `LiftingLineInducedVelocities`, which is the next unit.
+- [x] OLAF placement and fusion analysis: [olaf-placement.md](olaf-placement.md). Key finding: lifting-line induction is a direct full-wake sum, 2–4× per step, the same order of cost as the wake treecode. It should reach the GPU with the wake kernel (M3), not after it.

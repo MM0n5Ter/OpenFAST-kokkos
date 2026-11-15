@@ -1,5 +1,12 @@
 # How to build Kokkos and link it with OpenFAST's Fortran
 
+> **Update 2026-11-14:** §2 was run with **Kokkos 5.3.0** (release tarball), C++20, gcc 12.3, cuda 12.3.0 and cmake 3.31.12.
+> - The script is `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/build/build-kokkos-5.3.0.sh`.
+> - Installs: `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/kokkos-5.3.0-{omp,cuda-h100}`. The CUDA install is `Kokkos_ARCH_HOPPER90` instead of the a100 example below. Both are compiled on the login node.
+> - §3 passes on the OpenMP install (see `examples/fortran-kokkos/README.md`). The CUDA toy passes on the H100 (job 1858536: worst relative error 2.3e-18, `capi_smoke` OK).
+> - An earlier pass with 4.5.1, the cluster's source tree, also passed on the H100. That install is superseded.
+> - The pre-built `pack4/third_party/kokkos-install` is **static, non-PIC, and has no OpenMP**, and its CMake config points at a deleted `nvcc_wrapper`. Do not use it for OpenFAST: the C-binding `.so` needs PIC/shared.
+>
 > **Status (2026-11-12): the commands in this note have not been run yet.**
 > - Checked: the Fortran side of `examples/fortran-kokkos` (shim, renamed oracle, L0 test, shared library loaded from Python) was compiled and run against a plain C++ stand-in for the kernel.
 > - Checked by reading the Kokkos 5.3.0 source, not by building: the API names (`create_mirror_view_and_copy`, `is_finalized`, `push_finalize_hook`, `numbers::pi`), the CMake options, and the architecture names.
@@ -158,6 +165,12 @@ How the pieces link, and why this works:
 - **A, the default.** `CMAKE_CXX_COMPILER=nvcc_wrapper` for the whole OpenFAST configure. This is the standard Kokkos route. All of OpenFAST's own C++ goes through nvcc_wrapper too: the registry tool, and openfast-cpp if enabled. That is slower to compile but should work.
 - **B.** Keep `g++` as the C++ compiler, and call `kokkos_compilation(TARGET ofk_kernels)` after `find_package(Kokkos)`. Kokkos's launcher then swaps in nvcc_wrapper for that target only. Check the final link: Kokkos's CUDA link options apply when the link language is C++.
 - **C, a full isolation fallback.** Build `ofk_kernels` as its own CMake project into `libofk.so`, which exports only `extern "C"` functions. OpenFAST links it as an imported library and never sees Kokkos.
+
+### Verified in the fork (unit 1, 2026-11-14)
+- `option(OPENFAST_KOKKOS OFF)`, `find_package(Kokkos 5.3...<6)` and `add_subdirectory(modules/kokkos)` in the top-level `CMakeLists.txt`.
+- `aerodynlib` gets `OPENFAST_KOKKOS` (PRIVATE) and links `ofk_kernels`.
+- `ofk_kernels` must be in `install(EXPORT OpenFASTLibraries)`, with a `$<BUILD_INTERFACE:…>` include directory.
+- **CUDA:** `kokkos_compilation(GLOBAL)`, keeping g++ as `CMAKE_CXX_COMPILER`. Option A, a global `nvcc_wrapper`, fails on `awae/src/vtk.cpp`.
 
 ## 6. Rules at the Fortran ↔ C++ boundary
 

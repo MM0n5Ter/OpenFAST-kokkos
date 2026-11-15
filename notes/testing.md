@@ -39,6 +39,12 @@ How to build each level: [harness.md](harness.md).
   - tolerance otherwise;
   - the treecode is checked against the direct sum, not bitwise against the Fortran tree.
 
+### Running r-test against the fork (learned in unit 1)
+- `py_ad_*` cases assume the build tree is `<src>/build`. Out of tree, they fail on baseline and port alike.
+- The Python cases need numpy, bokeh and pyOpenFAST (`opt/venv-rtest`).
+- `.outb` channels are quantized. Compare channel data with `tests/biotsavart-direct/cmp_outb.py`, not with `cmp`.
+- System-level check: strict mode must give `.outb` data identical to the OPENFAST_KOKKOS=OFF build. Unit 1 met this on all 15 OLAF outputs.
+
 ## Do we port the tests first? No
 - **r-test does not depend on the source language.** It runs binaries and compares files, and nothing in it needs porting. That independence is what makes it a valid judge of the port.
 - **The oracle must not be translated by the same agent before the code it checks**, or both can share the same mistake. Tests stay at least one step behind the code they check.

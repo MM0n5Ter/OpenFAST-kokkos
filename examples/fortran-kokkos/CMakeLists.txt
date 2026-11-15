@@ -5,9 +5,10 @@
 #   cmake --build build -j && ctest --test-dir build --output-on-failure
 cmake_minimum_required(VERSION 3.22)            # Kokkos 5 needs >= 3.22
 project(ofk_fortran_kokkos_toy Fortran CXX)
+enable_testing()                                # so add_test() below registers with ctest
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)         # objects also go into a shared library
-find_package(Kokkos 5 REQUIRED)                 # -DKokkos_ROOT=<install prefix>
+find_package(Kokkos 5.3...<6 REQUIRED)          # -DKokkos_ROOT=<install prefix>; decision #6: Kokkos 5.3.0, C++20
 find_package(Python3 REQUIRED COMPONENTS Interpreter)  # oracle renamer, C-API test
 
 # Shared kinds (stands in for NWTC_Library): one copy, never renamed.

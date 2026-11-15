@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "USD per million tokens, Anthropic first-party API list prices.",
+    "Source: Claude API reference bundled with Claude Code (model table cached 2026-11-03), read 2026-11-14.",
+    "Cache writes: 1.25x input for the 5-minute TTL, 2x input for the 1-hour TTL. Cache reads are model-specific.",
+    "Claude Haiku 5.5 cache read is not listed per model; 0.1x input is the documented general ratio (marked 'assumed').",
+    "Re-check against the official pricing page whenever this file is used for a report, and bump 'as_of'.",
+    "Session cost computed with these rates is an API-list-price EQUIVALENT. A subscription plan bills differently;",
+    "report it as 'USD (API-equivalent)'."
+  ],
+  "as_of": "2026-11-14",
+  "models": {
+    "claude-opus-5-5":   {"input": 4.00, "output": 20.00, "cache_write_5m": 5.00,  "cache_write_1h": 8.00,  "cache_read": 0.20},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_write_5m": 2.50,  "cache_write_1h": 4.00,  "cache_read": 0.10},
+    "claude-haiku-5-5":  {"input": 0.10, "output": 0.50,  "cache_write_5m": 0.125, "cache_write_1h": 0.20,  "cache_read": 0.01, "assumed": ["cache_read"]},
+    "claude-fable-5-2":  {"input": 8.00, "output": 40.00, "cache_write_5m": 10.00, "cache_write_1h": 16.00, "cache_read": 0.20}
+  },
+  "fast_mode_multiplier": {"claude-opus-5-5": 2.0, "claude-fable-5-2": 2.0}
+}

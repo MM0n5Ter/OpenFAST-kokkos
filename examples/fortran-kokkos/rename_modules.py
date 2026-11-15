@@ -12,7 +12,7 @@ still clash; check with `nm` (see notes/harness.md).
 
 Usage: rename_modules.py IN OUT MODULE [MODULE ...]
 """
-import re, sys
+import os, re, sys
 
 src, dst, *mods = sys.argv[1:]
 if not mods:
@@ -26,5 +26,6 @@ with open(src) as f:
 out, n = pat.subn(lambda m: f"{m.group(1)}{m.group(2)}_ref", text)
 if n == 0:
     sys.exit(f"rename_modules: no module statement for {mods} in {src}")
+os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)  # build trees start empty
 with open(dst, "w") as f:
     f.write(out)

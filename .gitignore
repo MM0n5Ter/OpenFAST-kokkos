@@ -14,3 +14,9 @@ out/
 # coverage
 *.gcda
 *.gcno
+# The old fork layout (submodule MM0n5Ter/openfast, branch kokkos), replaced on 2026-11-14 by the
+# overlay (src/ + src/cmake/ofk_overlay.cmake on deps/openfast; notes/overlay.md). Kept on disk only
+# because queued Slurm jobs read it (1860007 reads fork/reg_tests; 1860223, 1860779, 1862690 and
+# 1862732 read fork/reg_tests/lib and run the opt/build/fork-* / u3-* trees built from it).
+# Delete fork/ and .git/modules/fork once those jobs have run.
+fork/
