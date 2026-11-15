@@ -3,7 +3,7 @@
 API-preserving migration of OpenFAST (Fortran) to C++/Kokkos, one API unit at a time. Start with `README.md` and `notes/README.md`.
 
 - `deps/openfast` is the frozen baseline and oracle (pin `12fa3fc`). **Never edit it.** Cite code as `file:line` on the pin.
-- The port happens in `fork/` (branch `kokkos`): the Fortran shims sit in place in `fork/modules/<mod>/src/`, and the C++/Kokkos code in `fork/modules/kokkos/`. Unit cards and L0 tests go in `tests/<unit>/`. Read `notes/architecture.md` before porting: one source, strict and fast modes, the equivalence chain, per-instance handles.
+- The port lives in this repo as an **overlay** on the pin (`notes/overlay.md`). Changed OpenFAST files are full copies at their own paths under `src/modules/<mod>/src/`, with the Fortran shims in place. The C++/Kokkos code lives in `src/modules/kokkos/`. Build with `tools/openfast-build.sh <config> <builddir>`. `fork/` is the retired layout: do not use it. Unit cards and L0 tests go in `tests/<unit>/`. Read `notes/architecture.md` before porting: one source, strict and fast modes, the equivalence chain, per-instance handles.
 - Every unit passes the gates in `notes/criteria.md` (API A*, Regression R*, Performance P*, Placement L*, Fusion F*). Record results in `tests/<unit>/unit.md`.
 - Skills:
   - `ofk-analyze-unit`: placement and fusion analysis before porting;

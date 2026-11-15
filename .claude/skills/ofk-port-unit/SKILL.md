@@ -33,11 +33,11 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
    - Check L0 sensitivity by mutation: break each guard or constant by hand, and confirm L0 fails.
    - To link the pin's NWTC library: `module load openblas/0.3.28`, `-DBLA_VENDOR=OpenBLAS`. Worked example: `tests/biotsavart-direct/`.
 3. **Kernel.** Follow `notes/architecture.md` §2–3:
-   - Put the shared body in `fork/modules/kokkos/src/<unit>_body.hpp`, and instantiate it in `<unit>_strict.cpp` (FMA off) and `<unit>_fast.cpp` (FMA on).
+   - Put the shared body in `src/modules/kokkos/src/<unit>_body.hpp`, and instantiate it in `<unit>_strict.cpp` (FMA off) and `<unit>_fast.cpp` (FMA on).
    - Select the mode at runtime with `OFK_MODE`. Strict must be class B against the Fortran on the CPU; fast must reach the declared class against strict.
    - Wrap the body in a mode namespace (ODR, architecture.md §3). Follow the CPU vectorization recipe there, and check it with `-fopt-info-vec`.
    - Measure the Fortran's own FMA spread (`l0_*_ffma`) before declaring the fast-mode bound.
-   - Template: `fork/modules/kokkos/src/biotsavart_direct_*` and `tests/biotsavart-direct/`.
+   - Template: `src/modules/kokkos/src/biotsavart_direct_*` and `tests/biotsavart-direct/`.
    - Both modes must be deterministic.
 
    Also:
@@ -49,7 +49,7 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
    - Same per-target sum order for class B.
    - Pick the pattern from the placement note (square: `RangePolicy`; skinny: `TeamPolicy` reduce, class R1; tree: flat arrays and an explicit stack).
    - Persistent device buffers live in a per-instance handle (`type(c_ptr)` in a unit-internal Fortran type). No C++ globals per instance. Catch every exception.
-4. **Shim.** In the fork's Fortran file (`fork/modules/<mod>/src/`, edited in place), keep the module name and public interface, and change only the body:
+4. **Shim.** In the overlay copy of the Fortran file (`src/modules/<mod>/src/<file>`). If the file is not there yet, copy it from `deps/openfast/modules/<mod>/src/` first. The overlay picks it up automatically (`notes/overlay.md`)., keep the module name and public interface, and change only the body:
    `#ifdef OPENFAST_KOKKOS` → `call ofk_<unit>_<routine>(...)`, `#else` → the original body.
 5. **Run the gates** (`tools/gate.sh <unit> api|reg|perf` once it exists; until then the commands in harness.md):
    - **R1** on Serial/OpenMP (login node) and CUDA (`srun -p h100 --gres=gpu:1`; the cluster Kokkos CUDA build is sm_90);
@@ -71,25 +71,28 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
   - `kokkos-5.3.0-omp` (Serial + OpenMP);
   - `kokkos-5.3.0-cuda-h100` (CUDA sm_90 + OpenMP; compile with its `bin/nvcc_wrapper`, `NVCC_WRAPPER_DEFAULT_COMPILER=g++`).
 - Compile everything, CUDA included, on the login node. Only GPU *runs* need a job.
-- CUDA fork build: keep `CMAKE_CXX_COMPILER=g++`; `kokkos_compilation(GLOBAL)` is already in `fork/modules/kokkos`. GPU jobs: use `-p h100,h200` (both sm_90).
+- OpenFAST builds: `tools/openfast-build.sh pin|off|omp|fomp|cuda-a100|cuda-h100 <builddir>` (login node). CUDA keeps `CMAKE_CXX_COMPILER=g++`; `kokkos_compilation(GLOBAL)` is in `src/modules/kokkos/ofk_kernels.cmake`. GPU partitions:
+  - `-p h100,h200` (both sm_90; `cuda-h100` trees);
+  - `-p a100` (sm_80; `cuda-a100` trees).
+  - Both queues can wait hours to days. `sbatch --test-only` estimates are unreliable.
 - r-test:
   - it is initialized in `deps/openfast`;
-  - the fork's copy is a hardlink copy (`cp -al deps/openfast/reg_tests/r-test/. fork/reg_tests/r-test/`, since `--reference` refuses a shallow source);
-  - use the Python at `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/venv-rtest` (numpy, bokeh, pyOpenFAST);
-  - `py_ad_*` cases assume the build tree is `<src>/build`, so they fail out of tree on baseline and port alike;
+  - overlay builds use `deps/openfast/reg_tests/r-test` directly;
+  - use the Python at `/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/venv-rtest` (numpy, bokeh, pyOpenFAST), plus `vtk`, which `py_ad_B1n2_OLAF` needs;
+  - build trees under `opt/build/` need the symlink `opt/build/reg_tests/r-test -> deps/openfast/reg_tests/r-test`, because the pyOpenFAST tests import `driver_utilities` from `<build>/../reg_tests/r-test/modules`. It already exists.
   - compare `.outb` channel data with `tests/biotsavart-direct/cmp_outb.py`.
 - The Noether `pack4` install is static and non-PIC, so it cannot go into the C-binding `.so`. Do not use it for OpenFAST.
 - **Unit 2 lessons on running jobs:**
-  - P2 compares against a fork built with `OPENMP=ON` plus Kokkos-OpenMP.
+  - P2 compares against the `fomp` build (Fortran `OPENMP=ON` plus Kokkos-OpenMP), and against `openfast-pin-fomp` on the same node.
   - Never run concurrent jobs with `OMP_PROC_BIND=spread`; they pin to the same cores.
   - `bc` is not installed.
-  - Every new translation unit with device arithmetic must be listed as strict or fast in `fork/modules/kokkos/CMakeLists.txt`, because nvcc uses FMA by default.
+  - Every new translation unit with device arithmetic must be listed as strict or fast in `src/modules/kokkos/ofk_kernels.cmake`, because nvcc uses FMA by default.
   - R8 and claim 1 at system level need full-precision text output, not `.outb`.
 - **GPU nodes are AMD EPYC, and the cluster OpenBLAS is a zen4 (AVX-512) build.**
   - The A100 nodes (EPYC 7443, Zen3) die with "Illegal instruction" in `dgemm_` on any full OpenFAST run.
   - In every GPU job script, after `module load`, put this first on the library path: `export LD_LIBRARY_PATH=/weka/scratch/jhu/zli426/zzhan381/Transformation/opt/openblas-0.3.28-portable/lib:$LD_LIBRARY_PATH`. That is our build: LP64, DYNAMIC_ARCH, Haswell baseline.
   - The login node and `med` are Intel Sapphire Rapids, so a test that passes there proves nothing about the GPU nodes' CPU side.
-- **Shared fork tree:** the fork's working tree is shared by every unit in flight. Never rebuild another unit's build tree, and never let a queued job's build tree be reconfigured. Each unit uses its own build dirs.
+- **Shared source tree:** `src/` is shared by every unit in flight. Never rebuild another unit's build tree, and never let a queued job's build tree be reconfigured. Each unit uses its own build dirs.
 - **Fast GPU correctness checks:** `interactive_gpu` has A100 MIG slices with no queue and a 4 h limit. Use `kokkos-5.3.0-cuda-a100` and the `*-a100` build trees (`opt/build/build-a100.sh`). It is not for timing.
 - CPU timing jobs: use the `med` partition, because `interactive_cpu` caps a user at 4 CPUs. The h100 queue can wait hours, so submit GPU runs early.
 - Login nodes have no GPU. GPU jobs share a PI-wide limit of 16 GPUs: check `squeue`/`stree --limits` before submitting, and use `sbatch` rather than a blocking `srun` when the group is at its limit.

@@ -9,7 +9,7 @@ An agentic, **API-preserving**, repository-level migration of [OpenFAST](https:/
 | Path | Contents |
 |---|---|
 | `notes/` | Working notes: decisions, landscape, OpenFAST structure, downstream consumers, testing, roadmap, **how to build Kokkos with Fortran**, **how to build the test harness** ([index](notes/README.md)) |
-| `fork/` | Submodule: the fork [`MM0n5Ter/openfast`](https://github.com/MM0n5Ter/openfast), branch `kokkos`, started at the same pin. **The port happens here, in place.** Architecture: [notes/architecture.md](notes/architecture.md). |
+| `src/` | **The port.** It is an overlay on the pin: full copies of only the changed OpenFAST files (`src/modules/aerodyn/src/FVW*.f90`) and the C++/Kokkos library `src/modules/kokkos/`. The overlay is swapped into the pin's unmodified CMake by `src/cmake/ofk_overlay.cmake`. See [overlay](notes/overlay.md) and [architecture](notes/architecture.md). |
 | `deps/openfast/` | Submodule: upstream OpenFAST, pinned to `dev` `12fa3fc` (2026-11-06). It is the frozen baseline and the oracle for every comparison. **Never edit it.** |
 | `scripts/` | Analysis scripts that produce the numbers in `notes/`. Each one defaults to `deps/openfast`. |
 | `examples/fortran-kokkos/` | Minimal template of the pattern every unit follows: the frozen Fortran, the port behind the same interface, the C++/Kokkos kernel, an L0 differential test and a shared-library (C binding) check |
@@ -17,7 +17,6 @@ An agentic, **API-preserving**, repository-level migration of [OpenFAST](https:/
 Planned top-level directories, added when their work starts (see [roadmap](notes/roadmap.md)):
 - `tools/`: gate runner (`api`, `reg`, `perf`), capture/replay probes, interface extractor.
 - `tests/`: L0 tests per unit, the scaled OLAF performance case, the downstream (L3) workflows.
-- (the fork is now `fork/`, see the table above)
 
 ## Getting started
 
@@ -55,11 +54,18 @@ See [roadmap](notes/roadmap.md).
   - **passes on Kokkos-OpenMP**: L0 206/206 at relative error 0 (bitwise), and ctest 2/2;
   - **passes on the H100** (job 1858536): worst relative error 2.3e-18, `capi_smoke` OK.
   - Earlier, on 4.5.1, it passed on the H100: worst relative error 2.3e-18.
-- **Unit 1 of 3 done (v1)** ([unit card](tests/biotsavart-direct/unit.md)): the direct Biot–Savart kernels `ui_seg` and `ui_part_nograd`. They are in the fork behind `-DOPENFAST_KOKKOS=ON` ([architecture](notes/architecture.md)).
+- **Unit 1 of 3 done (v1)** ([unit card](tests/biotsavart-direct/unit.md)): the direct Biot–Savart kernels `ui_seg` and `ui_part_nograd`. They are in `src/` behind `-DOPENFAST_KOKKOS=ON` ([architecture](notes/architecture.md)).
   - **strict** mode is bitwise to the Fortran on CPU. On the H100 it differs only through the device `exp` (≤ 9e-16).
   - **fast** mode runs 1.07–3.95× Fortran+OpenMP on 8 CPU cores, and up to ~120× on one H100.
   - In strict mode, the r-test OLAF outputs are identical to the OFF build.
   - Open:
     - the FMA policy for fast mode ([decisions](notes/decisions.md));
     - per-call device allocation, which unit 2 fixes.
-- **Unit 2 in progress:** `InducedVelocitiesAll_*` and lifting-line induction, with persistent device buffers and the first end-to-end and R8 runs.
+- **Unit 2 done on CPU and GPU (correctness)** ([unit card](tests/induced-velocities/unit.md)): `InducedVelocitiesAll_*` and lifting-line induction, with a per-instance handle and persistent device buffers.
+  - R8 against the FMA envelope: 0/542 channels over 2×.
+  - On the H100, the direct-wake BAR case runs 6.5× faster than Fortran+OpenMP on 8 threads. Full A100 timings are queued.
+- **Unit 3 in progress** ([unit card](tests/treecode/unit.md)): the particle treecode.
+  - L0 gates pass. CPU fast mode runs 1.18–1.64× faster.
+  - On the BAR tree case (2 threads), it cuts the time from 88.5 s with the Fortran tree to 56.2 s.
+  - Pending: system-level R8 and building the tree on the GPU.
+- **Layout:** the port moved from a fork to an in-repo overlay (2026-11-14). The move changed no output: CPU and GPU r-tests, `.outb` data and BAR cases are identical to the fork's ([evidence](notes/overlay.md)).

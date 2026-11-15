@@ -81,10 +81,38 @@ Logs are under `opt/build/`; build trees `ov-*` (OpenFAST) and `ov-tests-*` (uni
 - Unit 2 (`ov-tests-iv-cuda-a100`): 12/12 pass; the summary lines are **identical** to the fork-built `u3-iv-cuda-a100` run. Claim 2: Basic 1.626e-16, Part 4.35e-17 (card: 1.63e-16 / 4.35e-17); claim 3 8.245e-14 (card 8.25e-14).
 
 ### 4.3 System level: ctest `aerodyn_utest|OLAF`
-(job pending, filled below)
+CPU, job 1863342 (`med`, `tests/overlay/cpu.sbatch`, log `ov-cpu.ofk-infra-sys.1863342.log`), on `ov-off`, `ov-omp` strict, `ov-omp` fast and `ov-omp` fast with `OFK_TC=fortran`: **16/17 in each**. The one failure, `py_ad_B1n2_OLAF`, failed on `ov-off` too, so the port did not cause it. It was the test environment:
+1. The pyOpenFAST driver imports `driver_utilities` from `<build>/../reg_tests/r-test/modules`. That path assumes the build dir sits inside the source tree. Fix: a symlink `opt/build/reg_tests/r-test -> deps/openfast/reg_tests/r-test`.
+2. `visread.py` imports `vtk`. Fix: `pip install vtk` into `opt/venv-rtest`.
+
+After both fixes (2026-11-15, login node), `py_ad_B1n2_OLAF` passes on `ov-off` and on `ov-omp` in strict and fast mode, so CPU is **17/17**.
+
+`.outb` channel data, overlay vs fork (job 1860600 trees): **identical for all 17 outputs**. The comparisons cover fork off vs ov off and fork omp-strict vs ov omp-strict. Within the overlay, ov omp-strict is also identical to ov off.
+
+The `maxrel=` entries in the same tables come from `cmp_outb.py`'s second column. That column is fast mode (`OFK_TC=fortran`) compared with the strict/off reference, so it is not an overlay-vs-fork difference:
+- glue-code cases: up to 1.6e-5, the strict-vs-fast difference at `.outb` resolution already recorded for unit 2 (criteria R6 note);
+- `modules/aerodyn` cases: identical.
+
+GPU, job 1863556 (`interactive_gpu` A100 MIG, `tests/overlay/gpu_sys_mig.sbatch`, logs `ov-gpusys-1863556/cuda-{strict,fast}.ctest.log`): **11/11 in both modes**.
 
 ### 4.4 BAR full-precision cases
-(job pending, filled below)
+These ran in job 1863342 at `OMP_NUM_THREADS=2`. "Data" means the text outputs compared from line 8 on, overlay vs fork.
+
+| Case | strict | fast | fast, `OFK_TC=fortran` | ov strict vs ov off |
+|---|---|---|---|---|
+| `bar-r8-direct` | identical (301 lines) | identical | identical | identical |
+| `bar-r8-tree` | identical | **differs** (expected) | identical | identical |
+
+`bar-r8-tree` in fast mode differs because the overlay runs unit 3's Kokkos treecode by default (`OFK_TC=kokkos`). The fork run in job 1860700 predates it and used the Fortran tree. With `OFK_TC=fortran` the overlay matches the fork exactly. Unit 3's system-level R8 judges the new tree's drift against the envelope.
+
+Wall times (Xeon 8480+, 2 threads):
+
+| Case | off | strict | fast | fast, `OFK_TC=fortran` |
+|---|---|---|---|---|
+| direct | 769 s | 385 s | 194 s | 192 s |
+| tree | 97.9 s | 62.9 s | 56.2 s | 88.5 s |
+
+The Kokkos tree takes the tree case from 88.5 s with the Fortran tree to 56.2 s.
 
 ## 5. Claim 3 with FMA: the per-branch bound in unit 1's ctest
 
@@ -109,6 +137,6 @@ Results (bound and worst/bound per branch; identical on CPU and on the A100):
 **Unit 1 ctest: 23/23 pass** (seed 1) and 16/16 of the claim-1/claim-3 subset at seed 7, on CPU (`ov-tests-bsd-omp`, job 1863010) and 23/23 at both seeds on the A100 MIG (`ov-tests-bsd-cuda-a100`, job 1863100). Before: 21/23 (`l0_ui_seg_strictfast`, `l0_ui_seg_fast` failed at 1e-12).
 
 ## 6. What remains in `fork/`
-
-
-(filled below)
+- **Nothing in the code:** `src/` holds everything the port needs.
+- **On disk:** `fork/` (git-ignored) is still needed by queued job **1860223**. That job runs the pre-overlay `opt/build/fork-cuda` tree, whose ctest reads `fork/reg_tests/r-test`. Its replacement on the overlay is job 1875922 (A100, `tests/induced-velocities/gpu_a100_full.sbatch`).
+- **Removal:** once 1860223 has run or been cancelled, delete `fork/` and the `fork*` build trees in `opt/build/`.

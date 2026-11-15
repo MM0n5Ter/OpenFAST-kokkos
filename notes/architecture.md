@@ -1,4 +1,4 @@
-# Architecture of the port (v0, 2026-11-14)
+# Architecture of the port (v0, 2026-11-14; layout updated to the overlay 2026-11-15)
 
 This note describes the shape every ported unit takes. Three units establish it:
 1. the direct kernels;
@@ -11,15 +11,16 @@ It does not have to be perfect after those three, but it must already carry ever
 | Path | Role |
 |---|---|
 | `deps/openfast` | Upstream pin `12fa3fc`, the frozen baseline and oracle. **Never edited.** |
-| `fork/` | Submodule `MM0n5Ter/openfast`, branch `kokkos`, started at the same pin. **The port happens here**, in place, so it can go upstream as a PR. |
-| `fork/modules/kokkos/` | `ofk_kernels`: the one C++/Kokkos library for all ported units, so the process has one Kokkos runtime. Built when the fork's CMake has `-DOPENFAST_KOKKOS=ON` (decision #5). |
+| `src/modules/<mod>/src/*.f90` | Full copies of only the OpenFAST files we change, at their own paths. The module name and public interface stay. Ported bodies become `#ifdef OPENFAST_KOKKOS` shims, and the pin's body stays in `#else`. |
+| `src/modules/kokkos/` | `ofk_kernels`: the one C++/Kokkos library for all ported units, so the process has one Kokkos runtime. |
+| `src/cmake/ofk_overlay.cmake` | Swaps `src/<path>` for `deps/openfast/<path>` in every target of the pin's unmodified CMake (`-DCMAKE_PROJECT_INCLUDE`). With `-DOPENFAST_KOKKOS=ON` it also adds `ofk_kernels`. See `notes/overlay.md`. The fork it replaced (`fork/`) is retired. |
+| `tests/<unit>/` (this repo) | Unit card and L0 tests. The oracle is built from `deps/openfast` with `_ref` renaming, and the port from `src/` where overlaid. |
 
-Build facts from unit 1:
-- **CUDA:** keep `CMAKE_CXX_COMPILER=g++`; `fork/modules/kokkos` calls `kokkos_compilation(GLOBAL)`. Setting `nvcc_wrapper` for the whole fork fails on OpenFAST's own `awae/src/vtk.cpp`.
+Build facts from unit 1, which still hold:
+- **CUDA:** keep `CMAKE_CXX_COMPILER=g++`; `ofk_kernels` calls `kokkos_compilation(GLOBAL)`. Setting `nvcc_wrapper` for the whole build fails on OpenFAST's own `awae/src/vtk.cpp`.
 - **Export set:** `ofk_kernels` is in `install(EXPORT OpenFASTLibraries)`, with a `$<BUILD_INTERFACE:…>` include directory.
 - **Linker:** CMake picks the C++ linker automatically because of the static C++ dependency.
-| `fork/modules/<mod>/src/*.f90` | The original files, edited in place. The module name and public interface stay. Ported bodies become `#ifdef OPENFAST_KOKKOS` shims, and the original body stays in `#else`. |
-| `tests/<unit>/` (this repo) | Unit card and L0 tests. The oracle is built from `deps/openfast` with `_ref` renaming, and the port from `fork/`. |
+
 
 ## 2. One source, with every difference named
 - **One interaction body per physics kernel.** Each `KOKKOS_INLINE_FUNCTION` computes one target–source contribution, templated on the regularization branch. Every backend and every loop shape calls the same body. No backend gets its own copy of the physics.
@@ -48,7 +49,7 @@ Build facts from unit 1:
   - no API change;
   - the mode is printed once in the log.
 - **Build:** FMA is a per-translation-unit flag, so each unit compiles its body header twice: `<unit>_strict.cpp` (contraction off) and `<unit>_fast.cpp` (contraction on). Both include the same `<unit>_body.hpp`. It is one source, instantiated twice.
-- **ODR rule:** each mode's translation unit wraps the body and the loop shapes in a mode-specific namespace (`ofk_<unit>::strict` / `::fast`; the template is `fork/modules/kokkos/src/biotsavart_direct_body.hpp`).
+- **ODR rule:** each mode's translation unit wraps the body and the loop shapes in a mode-specific namespace (`ofk_<unit>::strict` / `::fast`; the template is `src/modules/kokkos/src/biotsavart_direct_body.hpp`).
   - Without it, the linker merges the inline instantiations, and one mode silently runs the other's arithmetic.
   - A per-TU `-march` has the same hazard. *(Unit 1 lesson.)*
 - **FMA can move ill-conditioned formulas far more than reordering does.** The segment cross product `ya*zb - za*yb` cancels for targets near the segment line. There, FMA alone moves `ui_seg` by up to 1.1e-11 relative to Σ|c|, and the pin's own Fortran built with FMA moves by the same amount. Fast mode keeps FMA (user decision, 2026-11-14), and the bound for such formulas is set by the measured `l0_*_ffma` spread (see §4). *(Unit 1 lesson.)*
@@ -101,8 +102,8 @@ Below a measured `N_min`, a unit runs in the host execution space (P4). Same sou
 ## 7. The three units, and what each proves
 | Unit | Proves | Done when |
 |---|---|---|
-| 1. `biotsavart-direct` (`ui_seg`, `ui_part_nograd`). **v1 done 2026-11-14**; FMA policy open. | Shim/oracle/L0 pattern; one body; strict and fast; dispatcher; FMA switch; fork build integration (`OPENFAST_KOKKOS`) | Claims 1–3 on OpenMP and CUDA; P2 for the fast mode on CPU |
-| 2. `induced-velocities` (`InducedVelocitiesAll_Init/Calc/End`, `LiftingLineInducedVelocities`, packing). **CPU gates pass 2026-11-14; GPU pending.** | Handle with persistent buffers (P6); pack fused into the kernel (F1); an OLAF r-test case running end to end through the fork on CPU and GPU | Claims 1–4 (R8 on `ad_BAR_OLAF` or the scaled case); A1–A6 on the fork build |
+| 1. `biotsavart-direct` (`ui_seg`, `ui_part_nograd`). **v1 done 2026-11-14**; FMA policy open. | Shim/oracle/L0 pattern; one body; strict and fast; dispatcher; FMA switch; build integration (`OPENFAST_KOKKOS`) | Claims 1–3 on OpenMP and CUDA; P2 for the fast mode on CPU |
+| 2. `induced-velocities` (`InducedVelocitiesAll_Init/Calc/End`, `LiftingLineInducedVelocities`, packing). **CPU gates pass 2026-11-14; GPU pending.** | Handle with persistent buffers (P6); pack fused into the kernel (F1); an OLAF r-test case running end to end on CPU and GPU | Claims 1–4 (R8 on `ad_BAR_OLAF` or the scaled case); A1–A6 on the overlay build |
 | 3. `treecode` (`grow_tree_part`, `ui_tree_part`, segment variants as needed) | The irregular pattern (flat tree, explicit stack); the speedup on OLAF's default path | Class R2 against the direct sum; P1/P5 sweep up to 10⁶ particles |
 
 Deferred until after the three: phase-2 residency (wake time-stepping, F3/F4/F9), the host-side circulation solve (F10), and VTK/IO.

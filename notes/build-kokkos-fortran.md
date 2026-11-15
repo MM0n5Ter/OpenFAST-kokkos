@@ -104,7 +104,7 @@ git -C deps/openfast submodule update --init --depth 1 reg_tests/r-test
 cd build-of-base && OMP_NUM_THREADS=1 ctest -R 'OLAF|5MW_MRSemi_DLL_WSt_WavesIrr|aerodyn_utest' -j 8 --output-on-failure
 ```
 
-**Kokkos builds** (in the port fork; same flags plus):
+**Kokkos builds** (now `tools/openfast-build.sh omp|cuda-a100 <dir>`, which adds `-DCMAKE_PROJECT_INCLUDE=src/cmake/ofk_overlay.cmake`; same flags plus):
 
 | Build | Extra CMake flags |
 |---|---|
@@ -114,6 +114,8 @@ cd build-of-base && OMP_NUM_THREADS=1 ctest -R 'OLAF|5MW_MRSemi_DLL_WSt_WavesIrr
 Use one build directory per variant: `build-of-base`, `build-of-kk-omp`, `build-of-kk-a100`.
 
 ## 5. The CMake changes in the OpenFAST fork
+
+> **Superseded (2026-11-14):** the port no longer edits OpenFAST's CMake. `src/cmake/ofk_overlay.cmake` makes the equivalent changes from outside, on the unmodified pin; see `notes/overlay.md`. This section is kept as the record of what the overlay has to reproduce.
 
 Three small edits. All of them are owned by Lane A.
 
