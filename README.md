@@ -64,8 +64,9 @@ See [roadmap](notes/roadmap.md).
 - **Unit 2 done on CPU and GPU (correctness)** ([unit card](tests/induced-velocities/unit.md)): `InducedVelocitiesAll_*` and lifting-line induction, with a per-instance handle and persistent device buffers.
   - R8 against the FMA envelope: 0/542 channels over 2×.
   - On the H100, the direct-wake BAR case runs 6.5× faster than Fortran+OpenMP on 8 threads. Full A100 timings are queued.
-- **Unit 3 in progress** ([unit card](tests/treecode/unit.md)): the particle treecode.
-  - L0 gates pass. CPU fast mode runs 1.18–1.64× faster.
-  - On the BAR tree case (2 threads), it cuts the time from 88.5 s with the Fortran tree to 56.2 s.
-  - Pending: system-level R8 and building the tree on the GPU.
+- **Unit 3 done (CPU and GPU correctness)** ([unit card](tests/treecode/unit.md)): the particle treecode, with the Fortran's exact tree topology and a fast-mode tree build on the device.
+  - Strict mode is bitwise to the Fortran. Fast mode's error equals the Fortran tree's own (R2 ratio 0.909).
+  - R8: 0/542 channels over 2× on CPU and GPU. Mutation checks: 12/12 caught.
+  - CPU kernel 1.18–1.64×, CPU system 1.08–1.13×.
+  - On the A100, evaluation is about 47× faster at 1e6 particles. Full-GPU timings of the device build are queued.
 - **Layout:** the port moved from a fork to an in-repo overlay (2026-11-14). The move changed no output: CPU and GPU r-tests, `.outb` data and BAR cases are identical to the fork's ([evidence](notes/overlay.md)).

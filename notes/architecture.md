@@ -93,6 +93,7 @@ Build facts from unit 1, which still hold:
 - **Kokkos runtime:** initialized lazily (`ofk_runtime`). If the host program already initialized Kokkos, it is not finalized by us.
 - **Residency, phase 1:** Fortran owns the wake state, and the device holds mirrors that are refreshed per call.
 - **P6 measurement:** count only allocations with bytes > 0. Kokkos 5.3.0 CUDA emits a 0-byte `TeamScratchMemory` allocation event on every team launch that uses no level-1 scratch. Compare text outputs from line 8 on: the header carries a timestamp.
+- **A device algorithm that replaces a host one gets two switches** (unit 3): one that forces it on host backends, so the CPU L0 tests it (`OFK_TC_DEVBUILD=1`), and one that runs both and compares the exact parts bit for bit (`OFK_TC_DEVBUILD_CHECK=1`).
 - **Outputs callers can see limit fusion:** the host pack (`Sgmt`, `Part`) still runs because callers can read those arrays. It is the GPU path's main Amdahl term. Removing it needs those arrays filled lazily, only when read.
 - **Residency, phase 2** (after the three units): the device owns the wake. It needs rollback and copy semantics (criteria A7).
 
@@ -104,6 +105,6 @@ Below a measured `N_min`, a unit runs in the host execution space (P4). Same sou
 |---|---|---|
 | 1. `biotsavart-direct` (`ui_seg`, `ui_part_nograd`). **v1 done 2026-11-14**; FMA policy open. | Shim/oracle/L0 pattern; one body; strict and fast; dispatcher; FMA switch; build integration (`OPENFAST_KOKKOS`) | Claims 1–3 on OpenMP and CUDA; P2 for the fast mode on CPU |
 | 2. `induced-velocities` (`InducedVelocitiesAll_Init/Calc/End`, `LiftingLineInducedVelocities`, packing). **CPU gates pass 2026-11-14; GPU pending.** | Handle with persistent buffers (P6); pack fused into the kernel (F1); an OLAF r-test case running end to end on CPU and GPU | Claims 1–4 (R8 on `ad_BAR_OLAF` or the scaled case); A1–A6 on the overlay build |
-| 3. `treecode` (`grow_tree_part`, `ui_tree_part`, segment variants as needed) | The irregular pattern (flat tree, explicit stack); the speedup on OLAF's default path | Class R2 against the direct sum; P1/P5 sweep up to 10⁶ particles |
+| 3. `treecode` (`grow_tree_part`, `ui_tree_part`; segment variant deferred). **Done 2026-11-15**; GPU timing sweeps pending. | The irregular pattern: a flat preorder tree with skip pointers (stackless, visits in the Fortran's order); a level-synchronous device build with the Fortran's topology (integer partitions, fixed-tree sums, no sort library, no atomics); the speedup on OLAF's default path | Class R2 against the direct sum (ratio 0.909 = same tree); claims 1–3, R7, R8, P2, P6, A1/A2/A5/A7 pass on CPU and A100 (`tests/treecode/unit.md`); P1/P5 sweep up to 10⁶ particles (CPU done, GPU queued) |
 
 Deferred until after the three: phase-2 residency (wake time-stepping, F3/F4/F9), the host-side circulation solve (F10), and VTK/IO.

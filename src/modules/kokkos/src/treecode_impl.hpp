@@ -526,3 +526,4 @@ template void eval<float>(const FlatTree<float>&, const EvalArgs<float>&);
 
 }  // namespace OFK_BSD_MODE_NS
 }  // namespace ofk_tc
+#include "treecode_dbuild.hpp"

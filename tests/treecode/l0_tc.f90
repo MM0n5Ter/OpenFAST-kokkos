@@ -11,7 +11,7 @@
 !! Cases (unit.md audit list): RegFunctionPart 0..2; BranchFactor 1.0 1.5 2.0 3.0; DistanceDirect
 !! 0, small, 2.2 x size (the LL value); clouds: uniform box, helical wake filaments, regular grid
 !! (ties with cell centers: `>` vs `>=`), duplicated points, a clump of identical points, clumps
-!! straddling the degenerate-extent threshold 1.0e-5, zero-vorticity particles (dead nodes), all
+!! straddling the degenerate-extent threshold 1.0e-5 by 1e-9 relative, zero-vorticity particles (dead nodes), all
 !! zero, tiny vorticity straddling EqualRealNos' tolerance, large eps (radius <= maxRegParam leaf
 !! rule), eps = 0; nPart = 0, 1, 2, 3, 31, 32, 33 (TREE_LEAF_NCRIT), 65, 500, 3000, 20000; targets
 !! on particles, inside, far; nonzero initial Uind with -0, NaN tail columns, leading dimension 4.
@@ -160,8 +160,10 @@ contains
          do i = 1, min(n, 40)
             P(:,i) = [3.0_ReKi, 4.0_ReKi, 5.0_ReKi]
          end do
-      case (6, 7)   ! a clump of 40 with extent just below / above the threshold 1.0e-5
-         ext = merge(0.9e-5_ReKi, 1.1e-5_ReKi, kind == 6)
+      case (6, 7)   ! a clump of 40 with extent just below / above the threshold 1.0e-5, by 1e-9
+         ! relative: tight enough to tell the double 1.0e-5 from float(1.0e-5) = 1.0e-5 - 2.5e-14
+         ! (mutation check: a hard-coded 1.0e-5f survived the earlier 0.9e-5 / 1.1e-5 clumps)
+         ext = merge(1.0e-5_ReKi*(1 - 1.0e-9_ReKi), 1.0e-5_ReKi*(1 + 1.0e-9_ReKi), kind == 6)
          do i = 1, min(n, 40)
             P(:,i) = [3.0_ReKi, 4.0_ReKi, 5.0_ReKi] + ext*[real(mod(i,2), ReKi), 0.5_ReKi*rnd(), 0.0_ReKi]
          end do

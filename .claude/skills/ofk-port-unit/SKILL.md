@@ -97,6 +97,14 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
 - CPU timing jobs: use the `med` partition, because `interactive_cpu` caps a user at 4 CPUs. The h100 queue can wait hours, so submit GPU runs early.
 - Login nodes have no GPU. GPU jobs share a PI-wide limit of 16 GPUs: check `squeue`/`stree --limits` before submitting, and use `sbatch` rather than a blocking `srun` when the group is at its limit.
 
+- **Unit 3 lessons (device algorithms, mutation checks):**
+  - Write a device algorithm generic over the execution space, with team size 1 on host backends, and give it a runtime switch that forces it on the CPU (`OFK_TC_DEVBUILD=1`). Then the whole CPU L0 tests it on the login node in seconds, before any GPU job.
+  - Give every device rewrite of a host algorithm a self-check switch that runs both and compares the exact parts bit for bit (integers, copies, min/max; `OFK_TC_DEVBUILD_CHECK=1`). It turns "R2 passes" into "same structure", and it is what catches the device-only mutations: R2 alone does not.
+  - Determinism without atomics: a fixed pairwise tree over team scratch (fixed team size) for float sums; integer scans for every partition and offset. Stable ranks inside a team tile come from one exclusive team scan of byte-packed `uint64` octant counts (tile <= 255).
+  - Run mutation checks on a **copy** of `src/` with its own test tree (`tests/treecode/` + `examples/fortran-kokkos/`, `-DOPENFAST_SOURCE=<repo>/deps/openfast`), never on `src/` itself: another build may be reading `src/` at the same time. Template: `tests/treecode/mutate.py`.
+  - Slurm stores a copy of the batch script at submission, so editing it under a *queued* job is safe; helper scripts the job calls at runtime (`run_case.sh`, `r8.py`) are not.
+  - When queued jobs hold your build trees, build the new code into prefixed trees (`U3=u3d tests/treecode/build_u3.sh …`, `ov3-*`) and point job scripts at them through environment variables, not by editing paths.
+
 ## Never
 - Edit `deps/openfast`.
 - Edit a caller to make a port fit (that fails A2).

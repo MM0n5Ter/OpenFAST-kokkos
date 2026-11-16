@@ -105,23 +105,27 @@ struct EvalArgs {
   T bf = 0, dd = 0, ff = 0;  // BranchFactor, DistanceDirect, PartRegFloorFactor(RegFunction)
 };
 
-// Device build buffers of the fast mode on device backends (treecode_dbuild.hpp). Every node
-// ever created is a BFS record k (levels contiguous); the flat preorder tree is written at the end.
-//   bint(k, .): 0 b, 1 e (range of perm), 2 status (0 dead, 1 leaf, 2 split), 3 leafN, 4 nChild,
-//               5 firstChild, 6..13 cnt[8], 14 childBase
-//   bG(k, .)  : geometric center (3), radius
-//   bpre(k, .): 0 subtree size (alive nodes), 1 subtree leaves, 2 preorder index, 3 leaf start
-constexpr int kBI = 15;
+// Device build buffers of the fast mode (treecode_dbuild.hpp). Level-synchronous: every node
+// ever created is a BFS record k (the records of one level are contiguous, children of a record
+// are contiguous and in octant order); the flat preorder tree is written at the end.
+//   ri(k, .)   : see dbuild::I_* (range in perm, status, leaf count, children, octant counts,
+//                chunk layout, subtree size / leaves, preorder index, leaf start)
+//   rg(k, .)   : geometric center (3), radius R (the Fortran's float recursion)
+//   rnr, rmom  : the node's kNR / kNM values (vorticity barycenter, R, maxRegParam; moments)
+//   cpa, ccnt, cbase, cmom: per chunk (kCH particle positions of one record) partial sums,
+//                octant counts, octant base of the chunk inside its record, partial moments
+// Sized on the first call from the capacity hint (P6); records grow by doubling as a fallback.
 template <class T>
 struct DevBuild {
-  Kokkos::View<int*, MemSpace> perm, perm2, nodeOf, lvl, oct, excl;  // per particle position
-  NodeV<T> bnr, bmom, bG;
-  NodeIV bint, bpre, nodeBase;
-  Kokkos::View<T*, MemSpace> box;      // root box reduction result (6)
-  Kokkos::View<int*, MemSpace> scal;   // device scalars (scan totals, root size/leaves)
-  std::size_t capN = 0, capB = 0;
+  Kokkos::View<int*, MemSpace> perm, perm2, oct;  // per particle position
+  NodeIV ri;
+  NodeV<T> rg, rnr, rmom;
+  NodeV<T> cpa, cmom;
+  NodeIV ccnt, cbase;
+  std::vector<int> lvl;  // first record of each level, then the end
+  std::size_t capP = 0, capR = 0, capC = 0;
   long long nAlloc = 0, bytes = 0;
-  int depth = 0, nB = 0;
+  int nNodes = 0, nLeaf = 0, depth = 0, nRec = 0;
 };
 
 namespace strict {
@@ -131,11 +135,12 @@ template <class T> void eval(const FlatTree<T>& t, const EvalArgs<T>& a);
 namespace fast {
 template <class T> void build(HostTree<T>& h, const PartCols<T>& p, const TreeConsts<T>& c);
 template <class T> void eval(const FlatTree<T>& t, const EvalArgs<T>& a);
-// Fast mode, device backends: build the tree on the device from the particle SoA P (n rows, 7
-// cols, device). Writes the flat tree into out (views already sized: nodes <= capNodes, leaves
-// >= n). Returns false if out's node capacity is too small (nothing written; out.nNodes = the
-// number needed). Same topology rules as the Fortran (and the host build); see treecode_dbuild.hpp.
-template <class T> bool build_device(DevBuild<T>& d, const DV2<T>& P, int n, const TreeConsts<T>& c, FlatTree<T>& out);
+// Fast mode, device backends: build the tree on the device from the particle SoA P (rows >= n,
+// 7 cols, device memory), n >= 2. build_device fills d (topology, nodes, d.nNodes, d.nLeaf);
+// write_device then writes the flat preorder tree into out (nr/mom/ni rows >= d.nNodes, leaf
+// rows >= n). Same topology rules as the Fortran (and the host build); see treecode_dbuild.hpp.
+template <class T> void build_device(DevBuild<T>& d, const DV2<T>& P, int n, const TreeConsts<T>& c, long capHint);
+template <class T> void write_device(const DevBuild<T>& d, const DV2<T>& P, const FlatTree<T>& out);
 }  // namespace fast
 
 }  // namespace ofk_tc

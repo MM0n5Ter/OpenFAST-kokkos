@@ -104,3 +104,13 @@ set_tests_properties(l0_tc_seed7 PROPERTIES ENVIRONMENT "${L0_BIND};OFK_L0_RTOL=
 add_test(NAME l0_tc_ffma COMMAND l0_tc_ffma)             # informational: Fortran-with-FMA vs strict
 set_tests_properties(l0_tc_ffma PROPERTIES ENVIRONMENT "${L0_BIND};OFK_L0_RTOL=1;OFK_L0_INFO=1;OFK_L0_BIG=0")
 add_test(NAME l0_tc_r7 COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/r7_threads.sh $<TARGET_FILE:l0_tc> ${CMAKE_BINARY_DIR}/r7)
+# Fast mode with the device tree build forced (treecode_dbuild.hpp), on every backend (on host
+# backends this tests the algorithm on the CPU). OFK_TC_DEVBUILD_CHECK=1: every device-built tree
+# must have the host build's topology bit for bit (ni, radius, maxRegParam, leaf sources).
+set(DB_ENV "OFK_TC_DEVBUILD=1;OFK_TC_DEVBUILD_CHECK=1")
+add_test(NAME l0_tc_devbuild COMMAND l0_tc)                 # R2, claim 3 (info), P6 with the device build
+set_tests_properties(l0_tc_devbuild PROPERTIES ENVIRONMENT "${L0_BIND};OFK_L0_RTOL=${OFK_L0_RTOL};${DB_ENV}")
+add_test(NAME l0_tc_devbuild_seed7 COMMAND l0_tc)
+set_tests_properties(l0_tc_devbuild_seed7 PROPERTIES ENVIRONMENT "${L0_BIND};OFK_L0_RTOL=${OFK_L0_RTOL};OFK_L0_SEED=7;OFK_L0_CASES=80;${DB_ENV}")
+add_test(NAME l0_tc_r7_devbuild COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/r7_threads.sh $<TARGET_FILE:l0_tc> ${CMAKE_BINARY_DIR}/r7db)
+set_tests_properties(l0_tc_r7_devbuild PROPERTIES ENVIRONMENT "OFK_TC_DEVBUILD=1")

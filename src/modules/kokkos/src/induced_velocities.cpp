@@ -12,6 +12,12 @@
 //   OFK_IV_GAP          dirty-span merge gap in elements (default 65536)
 //   OFK_TC              kokkos (default) | fortran: VelocityMethod 2 (particle treecode) in C++/
 //                       Kokkos (unit treecode) or in the original Fortran (A/B switch)
+//   OFK_TC_DEVBUILD     auto (default) | 0 | 1: fast-mode tree build on the device
+//                       (treecode_dbuild.hpp). auto = on device backends for n >= OFK_TC_DEVBUILD_MIN
+//                       (default 4096); 1 = always (also on host backends: tests the algorithm on
+//                       the CPU); 0 = never (the host build, uploaded). Strict always builds on the host.
+//   OFK_TC_DEVBUILD_CHECK=1  after every device build, also run the host fast build and require the
+//                       same topology (node and leaf arrays, radii, maxRegParam, leaf sources) bit for bit
 // plus unit 1's OFK_BSD_* shape switches, which the evaluation uses unchanged.
 //
 // Unit treecode (VelocityMethod 2, idVelocityTreePart) shares this handle: its source set is the
@@ -59,6 +65,9 @@ struct Config {
   std::size_t maxHandles = 64;
   long gap = 65536;
   bool treeKokkos = true;  // OFK_TC
+  int devBuild = -1;       // OFK_TC_DEVBUILD: -1 auto, 0 never, 1 always
+  long devBuildMin = 4096;  // OFK_TC_DEVBUILD_MIN
+  bool devBuildCheck = false;
 };
 const Config& config() {
   static const Config c = [] {
@@ -71,6 +80,9 @@ const Config& config() {
     if (const char* s = std::getenv("OFK_IV_MAX_HANDLES")) r.maxHandles = std::max(1, std::atoi(s));
     if (const char* s = std::getenv("OFK_IV_GAP")) r.gap = std::max(0L, std::atol(s));
     if (const char* s = std::getenv("OFK_TC")) r.treeKokkos = std::strcmp(s, "fortran") != 0;
+    if (const char* s = std::getenv("OFK_TC_DEVBUILD")) r.devBuild = (*s == '0') ? 0 : (*s == '1') ? 1 : -1;
+    if (const char* s = std::getenv("OFK_TC_DEVBUILD_MIN")) r.devBuildMin = std::max(2L, std::atol(s));
+    if (const char* s = std::getenv("OFK_TC_DEVBUILD_CHECK")) r.devBuildCheck = (*s == '1');
     return r;
   }();
   return c;
@@ -89,6 +101,7 @@ struct Stats {
   long long latChanged = 0;  // lattice bytes that differed from the mirror (= what an upload-once scheme must move)
   double tSync = 0, tUpload = 0, tPack = 0, tCpH2D = 0, tKernel = 0, tD2H = 0, tHostAdd = 0;
   long long nTree = 0, treeNodes = 0, treeLeaf = 0, treeDepth = 0;  // last tree built
+  long long nDevBuild = 0, nDevCheck = 0;
   double tBuild = 0, tTreeH2D = 0;
 };
 
@@ -148,6 +161,10 @@ struct Handle {
   bool treeValid = false;
   int treeMode = -1;
   T treeThr = T(0);
+  // fast mode, device build (treecode_dbuild.hpp): build buffers; the tree lands in dnr/dmom/dni/dleaf
+  ofk_tc::DevBuild<T> db;
+  bool treeDev = false;     // the current tree was built by build_device
+  int tNodes = 0, tLeaf = 0;  // the current tree's node and leaf counts
 };
 
 // ------------------------------------------------------------------------------------------
@@ -202,10 +219,10 @@ void report_one(const Handle<T>& h, const char* why) {
                "[ofk_iv] %s key=%p r%d: sources=%lld evals=%lld allocs=%lld (%.1f MB) "
                "H2D=%.1f MB D2H=%.1f MB lattice compared=%.1f MB changed=%.1f MB uploaded=%.1f MB | "
                "t[s] sync=%.4f upload=%.4f pack=%.4f cpH2D=%.4f kernel=%.4f D2H=%.4f hostadd=%.4f | "
-               "tree: builds=%lld last nodes=%lld leaf=%lld depth=%lld t[s] build=%.4f treeH2D=%.4f\n",
+               "tree: builds=%lld (device %lld) last nodes=%lld leaf=%lld depth=%lld t[s] build=%.4f treeH2D=%.4f\n",
                why, h.key, int(sizeof(T)), s.nSrc, s.nEval, s.nAlloc, s.bytesAlloc / 1e6,
                s.h2d / 1e6, s.d2h / 1e6, s.latCmp / 1e6, s.latChanged / 1e6, s.latUp / 1e6, s.tSync, s.tUpload,
-               s.tPack, s.tCpH2D, s.tKernel, s.tD2H, s.tHostAdd, s.nTree, s.treeNodes, s.treeLeaf,
+               s.tPack, s.tCpH2D, s.tKernel, s.tD2H, s.tHostAdd, s.nTree, s.nDevBuild, s.treeNodes, s.treeLeaf,
                s.treeDepth, s.tBuild, s.tTreeH2D);
 }
 void report_entry(const Entry& e, const char* why) {
@@ -546,6 +563,55 @@ void ensureR(V& v, std::size_t n, std::size_t cols, const char* name, Stats& st)
   st.bytesAlloc += (long long)(cap * cols * sizeof(typename V::value_type));
 }
 
+// Fast mode, device build: is it used for this n? (strict always builds on the host)
+inline bool use_devbuild(ofk::Mode mode, int n) {
+  if (mode != ofk::Mode::fast || n < 2) return false;
+  const Config& c = config();
+  if (c.devBuild == 0) return false;
+  if (c.devBuild == 1) return true;
+  return !kOnHost && long(n) >= c.devBuildMin;
+}
+
+// OFK_TC_DEVBUILD_CHECK: the device-built topology must equal the host fast build's bit for bit
+// (ni, radius, maxRegParam, leaf sources); centers and moments are only compared for information.
+template <class T>
+void devbuild_check(Handle<T>& h, const ofk_tc::PartCols<T>& pc, const ofk_tc::TreeConsts<T>& tc) {
+  ofk_tc::fast::build<T>(h.ht, pc, tc);
+  const auto& t = h.ht;
+  auto fail = [&](const std::string& w) {
+    throw std::runtime_error("OFK_TC_DEVBUILD_CHECK: device build differs from the host build: " + w);
+  };
+  if (t.nNodes != h.tNodes || t.nLeaf != h.tLeaf)
+    fail("nodes " + std::to_string(h.tNodes) + " vs " + std::to_string(t.nNodes) + ", leaves " +
+         std::to_string(h.tLeaf) + " vs " + std::to_string(t.nLeaf));
+  const std::size_t nn = std::size_t(t.nNodes);
+  if (nn > 0) {
+    auto ni = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), Kokkos::subview(h.dni, Kokkos::make_pair(std::size_t(0), nn), Kokkos::ALL));
+    auto nr = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), Kokkos::subview(h.dnr, Kokkos::make_pair(std::size_t(0), nn), Kokkos::ALL));
+    double dc = 0;
+    for (std::size_t i = 0; i < nn; ++i) {
+      for (int q = 0; q < ofk_tc::kNI; ++q)
+        if (ni(i, q) != t.ni[i * ofk_tc::kNI + q]) fail("ni(" + std::to_string(i) + "," + std::to_string(q) + ")");
+      for (int q = 3; q < ofk_tc::kNR; ++q)
+        if (nr(i, q) != t.nr[i * ofk_tc::kNR + q]) fail("radius/maxReg of node " + std::to_string(i));
+      for (int q = 0; q < 3; ++q) {
+        const double r = std::abs(double(nr(i, q)) - double(t.nr[i * ofk_tc::kNR + q])) / std::max(1.0, std::abs(double(nr(i, 3))));
+        dc = std::max(dc, r);
+      }
+    }
+    if (dc > 1e-10) fail("barycenter differs by " + std::to_string(dc) + " of the radius");
+  }
+  if (t.nLeaf > 0) {
+    auto lf = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), h.dleaf);
+    for (int c = 0; c < 7; ++c)
+      for (int r = 0; r < t.nLeaf; ++r) {
+        const T a = lf(r, c), b = t.leaf[std::size_t(r) + std::size_t(c) * t.ld];
+        if (!(a == b || (a != a && b != b))) fail("leaf row " + std::to_string(r) + " col " + std::to_string(c));
+      }
+  }
+  h.st.nDevCheck++;
+}
+
 template <class T>
 void tree_build(Handle<T>& h, T thr) {
   if (!h.src.valid || h.src.method != kMethodTree)
@@ -565,47 +631,80 @@ void tree_build(Handle<T>& h, T thr) {
   tc.eqTol = T(100) * std::numeric_limits<T>::epsilon() / T(2);
   tc.ncrit = 32;
   const ofk::Mode mode = ofk::mode();
-  if (mode == ofk::Mode::strict) ofk_tc::strict::build<T>(h.ht, pc, tc);
-  else ofk_tc::fast::build<T>(h.ht, pc, tc);
-  tm.lap(h.st.tBuild);
-  if constexpr (!kOnHost) {
-    const auto& t = h.ht;
-    // capacity: nodes ~ n/4 at most in practice (leaf buckets up to 32), leaves <= n
-    const std::size_t capN = std::size_t(std::max<long>({long(t.nNodes), h.capPart / 4, 64L}));
-    const std::size_t capL = std::size_t(std::max<long>({long(t.nLeaf), h.capPart, long(n), 1L}));
+  // capacity: nodes ~ n/4 at most in practice (leaf buckets up to 32), leaves <= n
+  auto ensure_tree = [&](long nNodes, long nLeaf) {
+    const std::size_t capN = std::size_t(std::max<long>({nNodes, h.capPart / 4, 64L}));
+    const std::size_t capL = std::size_t(std::max<long>({nLeaf, h.capPart, long(n), 1L}));
     ensureR(h.dnr, capN, ofk_tc::kNR, "ofk_tc_nr", h.st);
     ensureR(h.dmom, capN, ofk_tc::kNM, "ofk_tc_mom", h.st);
     ensureR(h.dni, capN, ofk_tc::kNI, "ofk_tc_ni", h.st);
     ensure2(h.dleaf, capL, 7, "ofk_tc_leaf", h.st);
-    using H1 = Kokkos::View<const T*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>;
-    using H1i = Kokkos::View<const int*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>;
-    using D1 = Kokkos::View<T*, MemSpace, Kokkos::MemoryUnmanaged>;
-    using D1i = Kokkos::View<int*, MemSpace, Kokkos::MemoryUnmanaged>;
-    long long b = 0;
-    if (t.nNodes > 0) {
-      const std::size_t nn = std::size_t(t.nNodes);
-      Kokkos::deep_copy(D1(h.dnr.data(), nn * ofk_tc::kNR), H1(t.nr.data(), nn * ofk_tc::kNR));
-      Kokkos::deep_copy(D1(h.dmom.data(), nn * ofk_tc::kNM), H1(t.mom.data(), nn * ofk_tc::kNM));
-      Kokkos::deep_copy(D1i(h.dni.data(), nn * ofk_tc::kNI), H1i(t.ni.data(), nn * ofk_tc::kNI));
-      b += (long long)(nn * (ofk_tc::kNR + ofk_tc::kNM) * sizeof(T) + nn * ofk_tc::kNI * sizeof(int));
+  };
+  if (use_devbuild(mode, n)) {
+    // ---- fast mode, device build: the particles go up once, the tree is built where it is read
+    if constexpr (!kOnHost) {
+      ensure2(h.part, std::size_t(std::max<long>(n, h.capPart)), ofk_bsd::kPartSoaCols, "ofk_iv_part_soa", h.st);
+      upload_rows(h, h.part, h.hpart, n, ofk_bsd::kPartSoaCols);
+      tm.lap(h.st.tTreeH2D);
     }
-    if (t.nLeaf > 0) {
-      const std::size_t ldd = h.dleaf.extent(0);
-      for (int c = 0; c < 7; ++c)
-        Kokkos::deep_copy(D1(h.dleaf.data() + c * ldd, std::size_t(t.nLeaf)),
-                          H1(t.leaf.data() + std::size_t(c) * t.ld, std::size_t(t.nLeaf)));
-      b += (long long)(std::size_t(t.nLeaf) * 7 * sizeof(T));
+    const long long a0 = h.db.nAlloc, b0 = h.db.bytes;
+    ofk_tc::fast::build_device<T>(h.db, h.part, n, tc, h.capPart);
+    h.st.nAlloc += h.db.nAlloc - a0;
+    h.st.bytesAlloc += h.db.bytes - b0;
+    ensure_tree(h.db.nNodes, h.db.nLeaf);
+    ofk_tc::FlatTree<T> out;
+    out.nr = h.dnr; out.mom = h.dmom; out.ni = h.dni; out.leaf = h.dleaf;
+    ofk_tc::fast::write_device<T>(h.db, h.part, out);
+    tm.lap(h.st.tBuild);
+    h.treeDev = true;
+    h.tNodes = h.db.nNodes;
+    h.tLeaf = h.db.nLeaf;
+    h.st.nDevBuild++;
+    h.st.treeDepth = h.db.depth;
+    if (config().devBuildCheck) {
+      ExecSpace().fence();
+      devbuild_check(h, pc, tc);
     }
-    h.st.h2d += b;
-    tm.lap(h.st.tTreeH2D);
+  } else {
+    if (mode == ofk::Mode::strict) ofk_tc::strict::build<T>(h.ht, pc, tc);
+    else ofk_tc::fast::build<T>(h.ht, pc, tc);
+    tm.lap(h.st.tBuild);
+    h.treeDev = false;
+    h.tNodes = h.ht.nNodes;
+    h.tLeaf = h.ht.nLeaf;
+    h.st.treeDepth = h.ht.depth;
+    if constexpr (!kOnHost) {
+      const auto& t = h.ht;
+      ensure_tree(t.nNodes, t.nLeaf);
+      using H1 = Kokkos::View<const T*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>;
+      using H1i = Kokkos::View<const int*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>;
+      using D1 = Kokkos::View<T*, MemSpace, Kokkos::MemoryUnmanaged>;
+      using D1i = Kokkos::View<int*, MemSpace, Kokkos::MemoryUnmanaged>;
+      long long b = 0;
+      if (t.nNodes > 0) {
+        const std::size_t nn = std::size_t(t.nNodes);
+        Kokkos::deep_copy(D1(h.dnr.data(), nn * ofk_tc::kNR), H1(t.nr.data(), nn * ofk_tc::kNR));
+        Kokkos::deep_copy(D1(h.dmom.data(), nn * ofk_tc::kNM), H1(t.mom.data(), nn * ofk_tc::kNM));
+        Kokkos::deep_copy(D1i(h.dni.data(), nn * ofk_tc::kNI), H1i(t.ni.data(), nn * ofk_tc::kNI));
+        b += (long long)(nn * (ofk_tc::kNR + ofk_tc::kNM) * sizeof(T) + nn * ofk_tc::kNI * sizeof(int));
+      }
+      if (t.nLeaf > 0) {
+        const std::size_t ldd = h.dleaf.extent(0);
+        for (int c = 0; c < 7; ++c)
+          Kokkos::deep_copy(D1(h.dleaf.data() + c * ldd, std::size_t(t.nLeaf)),
+                            H1(t.leaf.data() + std::size_t(c) * t.ld, std::size_t(t.nLeaf)));
+        b += (long long)(std::size_t(t.nLeaf) * 7 * sizeof(T));
+      }
+      h.st.h2d += b;
+      tm.lap(h.st.tTreeH2D);
+    }
   }
   h.treeValid = true;
   h.treeMode = int(mode);
   h.treeThr = thr;
   h.st.nTree++;
-  h.st.treeNodes = h.ht.nNodes;
-  h.st.treeLeaf = h.ht.nLeaf;
-  h.st.treeDepth = h.ht.depth;
+  h.st.treeNodes = h.tNodes;
+  h.st.treeLeaf = h.tLeaf;
 }
 
 // The flat tree as the kernels see it.
@@ -613,9 +712,9 @@ template <class T>
 ofk_tc::FlatTree<T> flat_tree(Handle<T>& h) {
   ofk_tc::FlatTree<T> f;
   const auto& t = h.ht;
-  f.nNodes = t.nNodes;
-  f.nLeaf = t.nLeaf;
-  if constexpr (kOnHost) {
+  f.nNodes = h.tNodes;
+  f.nLeaf = h.tLeaf;
+  if (kOnHost && !h.treeDev) {
     using U = Kokkos::MemoryUnmanaged;
     f.nr = ofk_tc::NodeV<T>(Kokkos::View<T**, Kokkos::LayoutRight, MemSpace, U>(
         const_cast<T*>(t.nr.data()), std::size_t(t.nNodes), ofk_tc::kNR));

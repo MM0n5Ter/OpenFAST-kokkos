@@ -2,125 +2,51 @@
 
 The OLAF particle treecode (`VelocityMethod(1) = 2`, OLAF's default wake path): `grow_tree_part` and `ui_tree_part` (`FVW_VortexTools.f90`) ported to C++/Kokkos behind the frozen Fortran interfaces of `InducedVelocitiesAll_Init/Calc` and `LiftingLineInducedVelocities`. It lives in unit 2's per-instance handle. Unit 3 of 3 (architecture.md §7).
 
-- **Owner**: agent session `199ad883` (subagent, unit 3). Date: 2026-11-14.
+
+- **Owner**: agent session `199ad883` (subagents, unit 3). Dates: 2026-11-14 (port, checkpoint), 2026-11-15 (overlay, system level, device build, mutations).
 - **Toolchain**: Kokkos 5.3.0 (C++20), gcc/gfortran 12.3.0, cmake 3.31.12, CUDA 12.3, OpenBLAS 0.3.28.
 
-## Status / resume (checkpoint 2026-11-14 ~21:25, requested by the parent: repo layout migration)
+## Status (final, 2026-11-15)
 
-### Done, with evidence
-All CPU evidence comes from the login node (Xeon 8480+) unless a job is named.
-- **Code.** The strict and fast tree is in the fork; see the file list below. It compiles on OpenMP (`opt/build/u3-omp`, `u3-iv-omp`, `u3-bsd-omp`) and on CUDA sm_80 and sm_90 (`u3-cuda-a100`, `u3-iv-cuda-a100`, `u3-cuda-h100`).
-- **L0 `l0_tc` (`opt/build/u3-omp`): 951/951 PASS, seed 1** (40 random cases plus the fixed set, including 20000-particle clouds on the parallel build path); 959/959 on seed 7 (80 random cases).
-  - Claim 1, strict vs the Fortran tree (pin flags, OPENMP=OFF): **bitwise in every case**, 0 cases with bit differences. This includes -0, NaN tails, ld=4 CPs, and every RegFunctionPart / BranchFactor / DistanceDirect / cloud kind.
-  - R2, fast vs direct, ≤ max(1.1 × Fortran-tree vs direct, 1e-12): **PASS**. Worst ratio 0.909, i.e. E(fast) = E(Fortran) in every case, because the tree is the same tree.
-  - 5 Fortran-singular cases are excluded and reproduced (trap T4 below).
-  - Claim 3 (information only), fast vs strict: worst 5.4e-14 of Σ|c|; acceptance flips 0.
-  - P6 at L0: 0 allocations in 20 steady grow+eval steps.
-- **R7 `r7_threads.sh`: PASS.** The strict and fast dumps are md5-identical across processes and across 1/4/8 threads.
-- **Unit 2 `l0_iv` with the tree ported (`opt/build/u3-iv-omp`): 13/13 PASS.** It goes through the real `InducedVelocitiesAll_Init/Calc` and `LiftingLineInducedVelocities` shims.
-  - TreePart in strict: 380 comparisons per run, bitwise against the oracle, packed and lattice runs both.
-  - Strict vs fast: 1.9e-15.
-  - The A7 sequence now also runs with wake VelocityMethod 2: 544 comparisons, bitwise against fresh instances and the oracle.
-  - P6 with VelocityMethod 2: 0 allocations.
-- **First CPU sweep (job 1862730, med, 8 threads).** It ran the *serial*-build binary, now superseded. Fortran+OpenMP vs fast (build / eval / total, s):
+**Done.** Every gate in scope passes on CPU and on the A100 (MIG); the GPU timing sweeps with the device build are queued (P1/P3/P5 on full GPUs). The segment tree (VelocityMethod 4) is deferred (below).
 
-  | N | Fortran+OpenMP | fast |
-  |---|---|---|
-  | 1e5 | 0.0109 / 0.0256 / 0.0365 | 0.0157 / 0.0225 / 0.0382 |
-  | 1e6 | 0.156 / 0.253 / 0.410 | 0.221 / 0.221 / 0.443 |
-
-  The fast evaluation is 1.14× the Fortran, but the build was serial. The parallel build is in the current binary, re-measured by job 1862863.
-
-- **Results that arrived at the checkpoint (21:25).**
-  - **Job 1862863: CPU sweep, med (Xeon 8480+), 8 threads, current binary with the parallel host build.** Total s per call (build + eval), best of 3:
-
-    | N | Fortran+OpenMP | Kokkos fast | Kokkos strict | fast speedup |
-    |---|---|---|---|---|
-    | 1e3 | 4.25e-4 | 2.69e-4 | 3.79e-4 | 1.58× |
-    | 3e3 | 1.67e-3 | 1.02e-3 | 1.41e-3 | 1.64× |
-    | 1e4 | 4.04e-3 | 3.05e-3 | 3.90e-3 | 1.33× |
-    | 3e4 | 1.17e-2 | 9.82e-3 | 1.24e-2 | 1.19× |
-    | 1e5 | 3.91e-2 | 3.31e-2 | 4.23e-2 | 1.18× |
-    | 3e5 | 1.21e-1 | 1.02e-1 | 1.36e-1 | 1.18× |
-    | 1e6 | 4.55e-1 | 3.65e-1 | 4.30e-1 | 1.25× |
-
-    At 1e6 the split is: Fortran build 0.195 / eval 0.260; fast build 0.131 / eval 0.234. Strict is at 0.94–1.06× the Fortran. P1/P2 at kernel level: fast ≥ 1.18× at every N.
-  - **Job 1862865: A100 MIG, `u3-cuda-a100`.**
-    - l0_tc 3/3. **Claim 2:** strict CUDA vs Fortran worst 1.8e-16 of Σ|c| (bound 1e-13).
-    - R2 PASS on the GPU (worst ratio 0.909, 5 singular cases reproduced).
-    - Claim 3 on the GPU: 4.6e-14.
-    - P6 on the GPU: 0 allocations in steady steps.
-    - R7 on the GPU: md5-identical across processes.
-    - Unit 2 `l0_iv` on the GPU with the tree ported: 12/12; TreePart strict vs oracle 4.4e-17, fast vs strict 1.9e-15; A7 (544) bitwise.
-- **`opt/build/fork3-fomp` built completely** (aerodyn_driver, openfast, regression_tests).
-
-### Half-done
-- **The fast-mode device build.** Declarations only: `DevBuild<T>` and `fast::build_device` in `treecode_common.hpp`. **Nothing is implemented and nothing calls them.** Today fast mode on CUDA builds the tree on the host (in parallel) and uploads the flat tree. The design is below ("Next steps" 3).
-- **Fork builds.**
-  - `opt/build/fork3-fomp` (Kokkos-OpenMP + Fortran OPENMP=ON) is fully built from the pre-migration fork sources.
-  - `opt/build/fork3-off` was **not started**: the build chain broke when I edited `build_u3.sh` while it ran.
-  - `fork3-cuda-a100` and `fork3-cuda-h100` were not started.
-- **Not done:** system level (R6, R8, claim 1 on the BAR case, P2, P6 on a full run), A1/A2/A5 on the fork build, GPU evidence, mutation tests, the segment tree.
+- **Code** (overlay layout, `src/`): the strict and fast tree from the 2026-11-14 checkpoint, plus the **fast-mode device build** (`src/modules/kokkos/src/treecode_dbuild.hpp`, level-synchronous K1-K5, no sort library, no atomics). Selection (`OFK_TC_DEVBUILD`): `auto` (default) = device backends, fast mode, n >= `OFK_TC_DEVBUILD_MIN` (4096); `1` = always, also on host backends (to test the algorithm on the CPU); `0` = never (host build, uploaded). Strict always builds on the host. `OFK_TC_DEVBUILD_CHECK=1` runs the host fast build as well and requires the same topology bit for bit.
+- **Host backends are unchanged** by the device build (same code path in `tree_build`/`flat_tree` unless `OFK_TC_DEVBUILD=1`). So the CPU system results measured with `ov-fomp` (built before the device build) hold for the final source; `ov3-fomp` (final source) gives bit-identical bar-r8-tree outputs in fast and strict (job 1887985).
+- **Trees** (`opt/build/`): test trees `u3d-omp`, `u3d-iv-omp`, `u3d-cuda-a100`, `u3d-iv-cuda-a100`, `u3d-cuda-h100`; OpenFAST `ov3-cuda-a100`, `ov3-fomp`, `ov3-sp-omp` (single precision, aerodyn_driver only). Frozen timing binaries: `u3d-frozen-cuda-{a100,h100}/perf_tc`. The old `u3-*` and `fork3-*` trees were built from `fork/` and are superseded (u3-cuda-a100/h100 are still held by queued jobs 1875922/1862732).
+- **Open** (none blocks the gates):
+  1. GPU sweeps 1887932 (A100) and 1887933 (H100) are pending: they give the full-GPU device-build timing and the evidence for `OFK_TC_DEVBUILD_MIN` (the sweep has a host-build/device-build A/B at every N). On the MIG slice the device build already wins at 1e4 (6.7 ms vs 16.6 ms per build, noisy CPU) and at 1e6 (22 ms vs 86 ms).
+  2. Job 1862732 (H100, old host-build binary `u3-cuda-h100`, from the checkpoint) is superseded by 1887933, which also measures the host build (`devbuild0` rows). The parent may cancel it.
+  3. The device build costs about 1.4 ms per build at 21k particles on the MIG slice (BAR: 0.42 s over 303 builds): roughly 10 kernel launches and 2 scalar D2H per level. Launching K1/K3 with an upper-bound league size would remove one D2H per level, if the sweep shows that small-N latency matters.
+  4. E1-E6: E1 below; E2/E5/E6 are the parent's ledger rows (this session wrote none, as instructed).
 
 ### Slurm jobs (logs in `opt/build/`)
-| Job | What | Log / output | Look for |
+| Job | What | Log / output | Result |
 |---|---|---|---|
-| 1862730 `ofk-treecode-sweep` (done) | CPU sweep, serial-build binary | `u3-cpu.ofk-treecode-sweep.1862730.log`, `u3-sweep-1862730/` | superseded by 1862863 |
-| 1862863 `ofk-treecode-sweep2` (med, **done**, results above) | P1/P5 CPU sweep N=1e3..1e6, Fortran+OpenMP 8 threads vs Kokkos-OpenMP fast/strict, with the per-phase profile | `u3-cpu.ofk-treecode-sweep2.1862863.log`, `u3-sweep-1862863/sweep.csv` | `csv,` rows; fast/Fortran at 1e5, 1e6 |
-| 1862864 `ofk-treecode-l0` (med) | CPU L0 of units 3, 2 (tree ported) and 1 (`u3-bsd-omp`, unit 1 must stay 13/13) | `u3-cpu.ofk-treecode-l0.1862864.log`, `u3-l0-1862864/*.ctest.log` | `tests passed` lines |
-| 1862865 `ofk-treecode-mig` (interactive_gpu, A100 MIG, **done**, results above) | claim 2 (strict CUDA vs Fortran, `OFK_L0_RTOL=1e-13`), R2/claim 3/P6 on the GPU, R7 GPU, unit 2 `l0_iv` on the GPU (`u3-iv-cuda-a100`). The full-case GPU block is skipped: `fork3-cuda-a100` does not exist yet. | `u3-gpu.ofk-treecode-mig.1862865.log`, `u3-mig-a100-1862865/` | `claim 1/2 ... worst err`, `tests passed` |
-| 1862690 `ofk-treecode-perf` (a100 full GPU, pending) | GPU sweep, port only, fast and strict, profile split | `u3-gpu.ofk-treecode-perf.1862690.log`, `u3-perf-a100-1862690/sweep.csv` | `a100,csv,` rows; `report` lines (build / treeH2D / cpH2D / kernel / D2H) |
-| 1862732 `ofk-treecode-perf` (h100,h200, pending; queue estimate 2026-11-16) | same on sm_90 | `u3-gpu.ofk-treecode-perf.1862732.log` | same |
+| 1862730, 1862863, 1862864, 1862865 (checkpoint) | CPU sweeps, CPU L0, MIG L0 of the fork-built code | `u3-cpu.*`, `u3-gpu.ofk-treecode-mig.1862865.log` | see the gate table |
+| 1862690 `ofk-treecode-perf` (a100, done) | GPU sweep, **host build** uploaded (checkpoint binary) | `u3-gpu.ofk-treecode-perf.1862690.log`, `u3-perf-a100-1862690/` | 1e6: build 61.8 ms, eval 5.5 ms per call |
+| 1862732 `ofk-treecode-perf` (h100,h200, **pending**) | same, sm_90, old binary | `u3-gpu.ofk-treecode-perf.1862732.log` | superseded by 1887933 |
+| 1863342 `ofk-infra-sys` (med, done; the overlay check) | ctest `aerodyn_utest\|OLAF` 17/17; BAR text outputs | `ov-cpu.ofk-infra-sys.1863342.log`, `ov-sys-1863342/` | R6, claim 1 at system level |
+| 1887061 `ofk-treecode-sys` (med, done) | R8/R7 on `ov-fomp`, P2 (2 reps, `OFK_TC=fortran` A/B), P6 full run | `u3-cpu.ofk-treecode-sys.1887061.log`, `u3-sys-1887061/` | all PASS |
+| 1887678 `ofk-treecode-migdb` (MIG, done) | first CUDA run of the device build: l0_tc, l0_tc_devbuild, perf A/B | `u3d-gpu.ofk-treecode-migdb.1887678.log` | PASS |
+| 1887850 `ofk-treecode-mig` (MIG, done) | GPU gates on `u3d-*`/`ov3-cuda-a100`: l0_tc 6/6, l0_iv 12/12 (x2), BAR on GPU: R7, R8, P6 | `u3-gpu.ofk-treecode-mig.1887850.log`, `u3-mig-a100-1887850/` | all PASS |
+| 1887932 `ofk-treecode-perf` (a100, **pending**) | P1/P3/P5 sweep 1e3..1e6, fast/strict + host/device-build A/B, `U3=u3d-frozen` | `u3-gpu.ofk-treecode-perf.1887932.log`, `u3-perf-a100-1887932/sweep.csv` | `a100,csv,` and `a100,devbuild{0,1},csv,` rows; `report` lines |
+| 1887933 `ofk-treecode-perf` (h100,h200, **pending**) | same on sm_90 | `u3-gpu.ofk-treecode-perf.1887933.log`, `u3-perf-h100-1887933/` | same |
+| 1887985 `ofk-treecode-ov3check` (med, done) | `ov3-fomp` (final source) vs `ov-fomp` on bar-r8-tree; device build forced on the CPU inside OpenFAST; single-precision run | `u3d-cpu.ofk-treecode-ov3check.1887985.log`, `u3d-ov3check-1887985/` | fast and strict IDENTICAL to job 1887061's; forced device build R8 2.2e-13, 0/542; single precision 301 finite data lines |
 
-The GPU perf jobs copy `perf_tc` from `opt/build/u3-cuda-{a100,h100}` **when they start**. After the migration, rebuild those trees from the new layout before the jobs start, or cancel and resubmit. GPU scripts already prepend the portable OpenBLAS (`opt/openblas-0.3.28-portable/lib`); the module's OpenBLAS dies with SIGILL on the EPYC GPU nodes.
-
-### Files created or modified in `fork/` (all uncommitted)
-| File | Change |
+### Files (this unit; uncommitted)
+| File | What |
 |---|---|
-| `fork/modules/kokkos/src/treecode_common.hpp` | **new**: flat-tree types (preorder plus skip), build fragments/tasks, `TreeConsts`, `EvalArgs`; `DevBuild` and `fast::build_device` (declared, not implemented) |
-| `fork/modules/kokkos/src/treecode_impl.hpp` | **new**: the host build (Fortran-faithful, parallel subtrees spliced in preorder), the multipole (statement by statement), the stackless traversal; it reuses unit 1's `part_term` for leaves |
-| `fork/modules/kokkos/src/treecode_strict.cpp`, `treecode_fast.cpp` | **new**: the two mode TUs (6 lines each) |
-| `fork/modules/kokkos/src/induced_velocities.cpp` | **modified** (unit 2's handle): `kMethodTree = 2`; tree state in `Handle<T>` (`HostTree`, device `dnr/dmom/dni/dleaf`, `treeValid/treeMode/treeThr`); `sources_packed` accepts method 2 (real RegParam, host staging only on device backends); `ensureR`, `tree_build`, `flat_tree`; `eval` gains bf/dd and the tree branch; C API `ofk_iv_tree_build`, `ofk_iv_eval_tree`, `ofk_tc_enabled`; config `OFK_TC`; tree fields in the profile line; `sources_valid` / `release_sources` know the tree |
-| `fork/modules/kokkos/src/induced_velocities.hpp` | **modified**: declarations of the three new C functions |
-| `fork/modules/kokkos/CMakeLists.txt` | **modified**: `treecode_strict.cpp` added to `OFK_STRICT_SOURCES`, `treecode_fast.cpp` to `OFK_FAST_SOURCES`, header comment |
-| `fork/modules/aerodyn/src/FVW_Subs.f90` | **modified** (+80 lines, all under `#ifdef OPENFAST_KOKKOS`): bind(C) interfaces `ofk_iv_tree_build`, `ofk_iv_eval_tree`, `ofk_tc_enabled`; private helpers `ofk_tc_grow` (replaces `grow_tree_part`) and `ofk_tc_ui` (replaces `ui_tree_part`); shims in `InducedVelocitiesAll_Init` (TreePart), `InducedVelocitiesAll_Calc` (TreePart) and `LiftingLineInducedVelocities` (TreePart, with DistanceDirect). Each one falls back to the original Fortran when `OFK_TC=fortran`. |
+| `src/modules/kokkos/src/treecode_common.hpp` | flat-tree types, build fragments, `TreeConsts`, `EvalArgs`, `DevBuild` (device build buffers) |
+| `src/modules/kokkos/src/treecode_impl.hpp` | host build (Fortran-faithful, parallel subtrees), multipole, stackless traversal; includes the device build in the fast TU |
+| `src/modules/kokkos/src/treecode_dbuild.hpp` | **new 2026-11-15**: the fast-mode device build (`build_device`, `write_device`) |
+| `src/modules/kokkos/src/treecode_{strict,fast}.cpp` | the two mode TUs |
+| `src/modules/kokkos/src/induced_velocities.{cpp,hpp}` | unit 2's handle: tree state, `tree_build` (host or device build), `flat_tree`, C API `ofk_iv_tree_build`, `ofk_iv_eval_tree`, `ofk_tc_enabled`; `OFK_TC`, `OFK_TC_DEVBUILD[_MIN,_CHECK]` |
+| `src/modules/kokkos/{CMakeLists.txt,ofk_kernels.cmake}` | `treecode_strict.cpp` strict, `treecode_fast.cpp` fast |
+| `src/modules/aerodyn/src/FVW_Subs.f90` | shims (+80 lines under `#ifdef OPENFAST_KOKKOS`), see Contract |
+| `tests/treecode/*` | `CMakeLists.txt` (+ `l0_tc_devbuild[_seed7]`, `l0_tc_r7_devbuild`), `tc_api.f90`, `l0_tc.f90` (kinds 6/7 tightened, see audit 13), `perf_tc.f90`, `r7_threads.sh`, `make_cases.sh`, `build_u3.sh` (`U3=` prefix), `cpu.sbatch` (overlay paths), `gpu.sbatch` (`U3=`/`OV=` trees, device-build runs, P6 bytes > 0), `mutate.py` (new), this card |
+| `tests/induced-velocities/l0_iv.f90` | method-2 scale and A7 sequence for wake method 2 (checkpoint) |
 
-**Outside `fork/`:**
-- `tests/treecode/*` is new: `CMakeLists.txt`, `tc_api.f90`, `l0_tc.f90`, `perf_tc.f90`, `r7_threads.sh`, `make_cases.sh`, `build_u3.sh`, `cpu.sbatch`, `gpu.sbatch`, this card.
-- `tests/induced-velocities/l0_iv.f90` is **adapted**:
-  - `scale_sum` gives method 2 the particle Σ|c| scale. Before, method 2 was "exact", because both sides ran the same Fortran.
-  - `a7_sequence(velW)` is called for wake methods 1 and 2.
-- `fork/FVW_VortexTools.f90` is **not** modified: `grow_tree_part` and `ui_tree_part` stay public Fortran for direct callers such as `FVW_Tests`.
-
-### Exact next steps (on the new layout)
-1. Rebuild the test trees from the new layout: `u3-omp`, `u3-iv-omp`, `u3-bsd-omp`, `u3-cuda-a100`, `u3-iv-cuda-a100`, `u3-cuda-h100` (see `build_u3.sh`; copy the script before running it). Rerun `ctest` in `u3-omp` and `u3-iv-omp`; expect the results above. Read jobs 1862863, 1862864 and 1862865.
-2. Build the fork trees `fork3-off` (OPENFAST_KOKKOS=OFF), `fork3-fomp` (Kokkos-OpenMP + OPENMP=ON) and `fork3-cuda-{a100,h100}`. Then:
-   - `sbatch -J ofk-treecode-sys tests/treecode/cpu.sbatch sys` runs:
-     - R6;
-     - claim 1 at system level (strict text output = fork3-off text output on `iv-cases/bar-r8-tree`);
-     - R8 against base₁ `iv-r8-1860700/bar-r8-tree.fomp1`, with the FMA envelope `iv-r8ffma-1860993/bar-r8-tree.ffma`;
-     - P2 on `bar-r8-tree` and `u3-cases/bar-perf-tree` (fork3-fomp vs pin+OpenMP, 8 threads, plus an `OFK_TC=fortran` A/B);
-     - P6 full run.
-   - Rerun the `mig` job once `fork3-cuda-a100` exists: GPU full case, R8 on the GPU, R7 on two GPU processes.
-   - **Note for R8:** base₁ is the pin with OPENMP=ON, whose `ui_leaves_nograd` `!$OMP SIMD` reductions reorder the leaf sums. So strict (= OPENMP=OFF Fortran) will **not** be identical to base₁. Claim 1 at system level is strict vs fork3-off. The OFF-vs-OMP drift is itself a natural envelope; report it.
-3. **The fast-mode device build** (design decided, not coded): level-synchronous on the device, one TeamPolicy league per level over the active nodes.
-   - K1, a team per node: a custom team reduction of {Σw·p, Σw, maxReg, min/max xyz, cnt[8]}; then the dead test; then a team Sum over the 30 moments; then status, written as a BFS record. K1 also writes, per particle position, nodeOf, level and octant.
-   - K2: a scan of nChild over the level's nodes gives the child slots and nNext. This is one scalar D2H per level.
-   - K3: a global `parallel_scan` with a struct of 8 ints (per-octant exclusive rank) over particle positions in split nodes, plus the node base. Integers, so exact.
-   - K4: a stable scatter `perm → perm2`.
-   - K5: child records, G_child = G + (0.5·R/2)·(±1) and R/2. This is exactly the Fortran's float recursion, so the octant decisions and the topology equal the Fortran's (min/max/counts are exact). Only centers and moments round differently.
-   - After the levels: a bottom-up pass (subtree size, subtree leaves) and a top-down pass (preorder index, leaf start), then a write into the same flat preorder/skip arrays plus the leaf gather.
-   - No thrust sort: Kokkos 5.3's `sort_by_key` uses thrust temporaries, which are per-call device allocations (P6), and keys of 3 bits × 21 levels would limit the depth.
-   - n ≤ 1 stays on the host. Use it only on device backends; host backends keep the parallel host build, which is a loop-shape choice per backend.
-   - Gate it with l0_tc's R2 and with claim 3 on the GPU. Then resubmit the GPU perf jobs.
-4. Then mutation checks:
-   - octant `>` → `>=`;
-   - powi chain r^5 = r^4·r;
-   - `pow` → `sqrt` in the strict build;
-   - leaves before branches swapped;
-   - degenerate threshold hard-coded as `1e-5f`.
-   Expect l0_tc claim 1 to fail for each. Then A1/A2/A5/A7 on fork3-*, then E1–E6.
-5. The segment tree (`grow_tree_segment`, `ui_tree_segment`) was not started; see "Segment tree: what it needs" below.
+E1 (size): C++ of the treecode 1244 lines (`treecode_*`; the device build 557 of them), handle changes in `induced_velocities.cpp` about 250 lines, Fortran shims 80 lines; Fortran in scope (`grow_tree_part*`, `compact_tree_part`, `ui_tree_part*`, `ui_leaves_nograd`) about 550 lines of `FVW_VortexTools.f90`.
 
 ## Contract (frozen, pin `12fa3fc`)
 
@@ -177,19 +103,31 @@ Entry points and the handle (unit 2 lesson 1): the key is `m%Sgmt`, which `Init`
 - On CUDA, strict uses the same host-built tree. Only `exp` and the device `pow` (build) differ.
 
 ### Fast (class R2): the same tree, FMA, vectorized leaves
-- The **same topology rules**. Today the fast mode reuses the host build compiled with FMA and `sqrt` for the norm. It is the same tree up to the `EqualRealNos` edge.
+- The **same topology rules**. On host backends the fast mode uses the host build compiled with FMA and `sqrt` for the norm; on device backends the device build below. Both give the Fortran's tree up to the `EqualRealNos` edge.
 - Fast-mode evaluation on host backends: each target's leaf sums go to 8 fixed lanes across all of its buckets, with `omp simd` and a fixed pairwise tree at the end. On device backends: 1 lane.
 - **Why this design.** R2 asks the fast tree's error vs direct to be ≤ 1.1 × the Fortran tree's. With the same tree, E(fast) = E(Fortran) up to rounding: L0 worst ratio 0.909 = 1/1.1. So R2 holds by construction rather than by luck on each input. A different tree (Morton/LBVH, another leaf size or MAC) would have needed a tighter MAC to be safe on every input, at a cost in speed.
-- The planned device build (next step 3) keeps this property: octant decisions use the Fortran's float recursion for the geometric centers, so the topology is the Fortran's.
-- The GPU speed comes from the evaluation (thread per target, no stack) and, once built, from the device build. The host build is the GPU path's Amdahl term (measurement pending, jobs 1862690/1862732).
+- The device build keeps this property: octant decisions use the Fortran's float recursion for the geometric centers, so the topology is the Fortran's (checked bit for bit by `OFK_TC_DEVBUILD_CHECK`).
+- The GPU speed comes from the evaluation (thread per target, no stack) and from the device build. With the host build, the build was 92% of the A100's time per call at 1e6 (job 1862690: 61.8 of 67.3 ms).
+
+### Fast, device backends: the device build (`treecode_dbuild.hpp`)
+- **Level-synchronous**, one BFS record per node; a level's records are contiguous, a record's children contiguous and in octant order. Per level:
+  - A: chunk layout (records cut into chunks of 512 positions; exclusive scan, one scalar D2H);
+  - K1, a team per chunk: Σw·p, Σw, maxReg, min/max xyz, octant per particle (`>` against the record's geometric center), octant counts;
+  - K2, a team per record: combine the chunks; the Fortran's decisions (dead, leaf rule, degenerate extent), barycenter, each chunk's octant base (integer team scans);
+  - K3/K4: moments about the barycenter, per chunk then per record;
+  - K5: children (scan of child counts, one scalar D2H), a stable partition by octant (byte-packed `uint64` team scan per 128-position tile, integer and exact), child records with `G + (0.5·(R/2))·(±1)`, `R/2`.
+  - Then bottom-up (subtree sizes and leaves) and top-down (preorder index, leaf start) passes, and `write_device`: the same flat arrays as the host build, leaves gathered in the host build's order.
+- **Determinism (R7):** float sums are per-thread strided loops plus a fixed pairwise tree in team scratch over a fixed team size (128 on CUDA, 1 on host backends); every partition is integer arithmetic. No `sort_by_key` (thrust temporaries are per-call allocations, P6), no atomics.
+- **Exactness:** min/max, counts and the geometric centers (`±q5` with q5 = 0.5·R/2: FMA cannot change `q5·(±1)`) equal the host build's, so the topology is identical; only barycenters and moments round differently. n <= 1 stays on the host.
+- **Memory (P6):** `DevBuild` in the handle, sized on the first call from `capPart` (records capPart/4, chunks capPart/512 + records); records grow by doubling (contents kept) as the fallback.
 
 ### Device state (P6)
 - In unit 2's handle (key `m%Sgmt`):
   - host build buffers: `std::vector`s, capacity reused;
   - device tree arrays, sized on the first call from the capacity hint `capPart = size(Part%P,2)`: nodes = capPart/4, leaves = capPart;
   - growth by doubling as the fallback.
-- On host backends the kernels read the host buffers through unmanaged views (no copy). On device backends the flat tree is copied in.
-- L0 P6: 0 allocations after warm-up (l0_tc and l0_iv with VelocityMethod 2).
+- On host backends the kernels read the host buffers through unmanaged views (no copy). On device backends the flat tree is written by the device build (fast) or copied in (strict, or n below `OFK_TC_DEVBUILD_MIN`); the device build uploads the particles (7 columns) once per build instead.
+- P6: 0 allocations after warm-up in L0 (l0_tc and l0_iv with VelocityMethod 2, both builds) and in full BAR runs (CPU and GPU).
 
 ## Audit list → L0 case
 | # | Trap | Port | L0 |
@@ -197,40 +135,59 @@ Entry points and the handle (unit 2 lesson 1): the key is `m%Sgmt`, which `Init`
 | 8 (placement) | order-2 multipole loop form ("BAR_OLAF fails with unrolled") | kept literally | claim 1 bitwise, every case |
 | 11 | `!$OMP SIMD` in `ui_leaves_nograd` reorders with OpenMP on | oracle = OPENMP=OFF | all |
 | 12 | `T_Tree` points into `Part` | the device tree owns copies; Fortran tree not grown | — |
-| 13 | default-kind literal `1.0e-5` (degenerate extent) | passed from the shim as `real(1.0e-5, ReKi)` | kinds 6/7: clumps of extent 0.9e-5 / 1.1e-5 |
+| 13 | default-kind literal `1.0e-5` (degenerate extent) | passed from the shim as `real(1.0e-5, ReKi)` | kinds 6/7: clumps of extent 1e-5·(1 ∓ 1e-9). The earlier 0.9e-5/1.1e-5 clumps let a hard-coded `1.0e-5f` survive (mutation check); now caught |
 | T1 (new) | `**0.5_ReKi` → `pow` (not `sqrt`) | strict uses `pow` | claim 1 |
-| T2 (new) | `r**n` powi chains | reproduced | claim 1 (mutation pending) |
+| T2 (new) | `r**n` powi chains | reproduced | claim 1 (mutation: caught, 134 cases) |
 | T3 (new) | dead nodes via `EqualRealNos` (absolute 1.1e-14 on Σ\|α\|) | same test | kinds 8 (zero α), 9 (tiny α) |
 | T4 (new) | **Fortran singularity**: a zero-radius node (all particles coincident, or n = 1) with RegFunctionPart = 0 and DistanceDirect = 0. A target at its center fails `r < max(0,0)`, so it gets the multipole at r ≈ 1e-15 (≈ 1e31). | reproduced (strict bitwise); excluded from R2 and counted | kind 5 (identical clump), targets on particles |
 | T5 (new) | RegParam is used by the build (maxRegParam) even for RegNone | the source set copies the real RegParam for method 2 | reg 0 cases |
 | T6 (new) | n = 0: `Uind = Uind + 0` still runs (turns -0 into +0) | same | n = 0 cases with -0 in U |
 | T7 (new) | root n = 1: radius 0, monopole only, maxReg = RegParam(1) | same | n = 1 |
-| T8 (new) | NCRIT = 32 boundary | — | n = 31, 32, 33 |
+| T8 (new) | NCRIT = 32 boundary | — | n = 31, 32, 33 (mutation 32→31 caught) |
 | T9 (new) | grid points on cell boundaries (`>` vs `>=`) | `>` | kind 3 |
 
-## Gate results (partial, checkpoint)
+## Gate results (final, 2026-11-15)
+CPU = Xeon 8480+ (login node or `med`); GPU = A100 MIG 2g.20gb on `interactive_gpu` (EPYC 7443 host). L0 logs: `opt/build/u3d-omp/ctest.login2.log`, `u3d-iv-omp/ctest.login{,.db}.log`, job logs as named.
+
 | ID | Result | Evidence |
 |---|---|---|
-| L0 claim 1 (strict vs Fortran OPENMP=OFF) | **PASS** (CPU) | l0_tc 951/951 (seed 1), 959/959 (seed 7), 0 bit-diff cases; l0_iv TreePart bitwise through the shims |
-| L0 claim 2 (strict CUDA) | **PASS** (A100) | job 1862865: 1.8e-16 of Σ\|c\| (bound 1e-13); R2, R7, P6 and unit 2's l0_iv also pass on the GPU |
-| R2 (fast vs direct ≤ 1.1 × Fortran tree vs direct) | **PASS** (CPU) | worst ratio 0.909; all regs × BF {1, 1.5, 2, 3} × DD {0, 0.3L, 2.2L}; edge cases listed above; 5 singular cases reproduced |
-| claim 3 (info) | 5.4e-14 of Σ\|c\| | no acceptance flips seen |
-| R7 | **PASS** (CPU) | r7_threads.sh: md5-identical, 1/4/8 threads, 2 processes |
-| P6 (L0) | **PASS** (CPU) | 0 allocations in steady steps |
-| A7 (L0) | **PASS** (CPU) | l0_iv `a7_sequence(2)`: re-evaluation, rollback, misc copies, orphaned handle |
-| R6, R8, P2, P6 (full run), A1/A2/A5 | NOT RUN | next steps 2 |
-| P1/P5 | partial | CPU sweep (job 1862863): fast 1.18–1.64× the Fortran+OpenMP at every N from 1e3 to 1e6; GPU sweep pending (jobs 1862690/1862732) |
+| Claim 1, L0 (strict vs Fortran OPENMP=OFF) | **PASS** (CPU) | `u3d-omp` l0_tc 951/951 (seed 1), 959/959 (seed 7, 80 random): 0 cases with bit differences. l0_iv TreePart bitwise through the shims (`u3d-iv-omp` 15/15) |
+| Claim 1, system | **PASS** | bar-r8-tree text output from line 8: ov-omp strict (Kokkos tree) = ov-off, 301 lines (job 1863342). Also ov-fomp strict = base₁ (pin OPENMP=ON, 1 thread) (job 1887061) |
+| Claim 2 (strict CUDA vs Fortran) | **PASS** (A100) | job 1887850: 1.21e-16 (seed 1), 1.80e-16 (seed 7) of Σ\|c\| (bound 1e-13); l0_iv TreePart 4.35e-17 |
+| R2 (fast vs direct ≤ 1.1 × Fortran tree vs direct) | **PASS** CPU and GPU, host and device build | worst ratio 0.9091 in every run: `u3d-omp` l0_tc, l0_tc_devbuild (seed 1, 7); job 1887850 the same four. 5 (7 with the 20000-particle clouds) Fortran-singular cases reproduced and excluded (T4) |
+| Claim 3 (fast vs strict, info) | 3.4e-14 / 3.7e-14 CPU (host / device build); 3.8e-14 / 4.6e-14 GPU | 0 acceptance flips (> 1e-12) anywhere. Device-build topology = host build's, bit for bit, in every L0 case (`OFK_TC_DEVBUILD_CHECK=1`, CPU and GPU) |
+| R6 | **PASS** | ctest `aerodyn_utest\|OLAF` 17/17 on ov-off, ov-omp strict, fast, fast `OFK_TC=fortran` (job 1863342 + the py_ad_B1n2_OLAF fix, notes/overlay.md §4.3); GPU 11/11 (job 1863556) |
+| R7 | **PASS** | L0: md5-identical dumps across processes and 1/4/8 threads, host build and device build, CPU (`u3d-omp`) and GPU (job 1887850). System: bar-r8-tree fast 1 vs 8 threads identical (job 1887061); GPU fast two processes identical, auto and device build (job 1887850) |
+| R8 (bar-r8-tree, 300 steps × 542 channels; base₁ = pin OPENMP=ON 1 thread, envelope = pin with FMA, max 6.39e-13) | **PASS** | CPU (job 1887061, ov-fomp): strict 0; fast 1 and 8 threads 2.08e-13 (worst ratio 0.37); 0/542 over 2×. GPU (job 1887850): strict 5.3e-14, fast (auto) 4.29e-13, fast device build 6.7e-14; 0/542. No channel ever > 1e-6 |
+| OFF-vs-OMP drift (info) | **0** | ov-off (OPENMP=OFF) = base₁ (OPENMP=ON) on every channel; the leaf `!$OMP SIMD` reordering does not show at system level in this case |
+| P1/P5 (kernel, grow + eval per call) | CPU **PASS**; GPU partial | CPU, 8 threads (job 1862863; host code unchanged since): fast 1.18–1.64× Fortran+OpenMP at N = 1e3..1e6 (1e6: 0.365 vs 0.455 s). A100 host build (job 1862690): 1e6 67.3 ms (eval 5.5 ms vs Fortran 260 ms on 8 Xeon cores, 47×; total 6.8×). Device build on the MIG slice (job 1887678): 1e6 build 22.2 ms vs 86.0 ms host build, eval 11.2 ms. Full A100/H100 with the device build: jobs 1887932/1887933 (pending) |
+| P2 (CPU users lose nothing, 8 threads, 2 reps) | **PASS** | job 1887061, ov-fomp vs openfast-pin-fomp: bar-r8-tree 41.0 vs 44.1 s (**1.08×**; `OFK_TC=fortran` 1.01×, strict 1.04×); bar-perf-tree 47.9 vs 53.9 s (**1.13×**; `OFK_TC=fortran` 1.03×, strict 1.06×). The tree is 11–17% of these runs (bar-r8-tree: eval 4.0 s + build 0.30 s of 40.3 s; bar-perf-tree: 7.5 + 0.49 s of 48.0 s) |
+| P3 (GPU split) | partial | BAR on MIG (job 1887850): tree build 0.42 s / 303 builds, particle H2D 0.044 s, of 34.1 s wall; perf sweep `report` lines pending (1887932/3) |
+| P4 | not rerun | the r-test cases are below `OFK_TC_DEVBUILD_MIN` on most steps; unit 2's P4 stands |
+| P6 | **PASS** | L0: 0 allocations in 20 steady grow+eval steps (CPU and GPU, host and device build). Full run, CPU (job 1887061): 4 Kokkos allocations, last after evaluation 2 of 903. Full run, GPU with the device build (job 1887850): **0 allocations with bytes > 0 after evaluation 3** (12372 zero-byte `TeamScratchMemory` events ignored, architecture.md §5) |
+| A1 | **PASS** | `nm` of `libaerodynlib.a`: no `_MOD_` symbol of ov-pin missing in ov-off, ov-omp, ov-fomp, ov-cuda-a100; the one added is unit 2's `fvw_subs::fvw_kokkos_release` |
+| A2 | **PASS** | the three overlaid Fortran files preprocess (`-DOPENFAST_DOUBLE_PRECISION`, no `OPENFAST_KOKKOS`) to exactly the pin's; every other change is in `src/modules/kokkos/` and `tests/` |
+| A5 | **PASS** | OFF build = pin: `tests/overlay/a5.sh ov-pin ov-off` (`ov-a5.log`): 76/76 `.mod` identical, 17/19 objects identical, the rest differ only in line-number immediates (the Fortran sources are unchanged since). `DOUBLE_PRECISION=OFF` with Kokkos-OpenMP: `ov3-sp-omp` (`tools/openfast-build.sh omp … -DDOUBLE_PRECISION=OFF`, aerodyn_driver) compiles and links (log `ov3-sp-omp.build.log`); it runs bar-r8-tree to the end with finite outputs (job 1887985) |
+| A6 | **PASS** (code) | no non-const `static` in `treecode_*`; device build buffers live in the per-instance handle |
+| A7 | **PASS** CPU and GPU | l0_iv `a7_sequence` with wake method 2 (re-evaluation, rollback, misc copies, orphaned handle): 544 comparisons bitwise in strict, CPU (`u3d-iv-omp`) and GPU (job 1887850), with the default and the forced device build |
+| Mutation checks (L0 sensitivity) | **12/12 caught** | `tests/treecode/mutate.py` on a copy of `src/`, log `opt/build/u3d-mutations2.log`: octant `>=`, powi r⁵ = r⁴·r, pow→sqrt, singleton order, `1.0e-5f`, dead-node tolerance 0, NCRIT 31 (claim 1 fails); fast-only MAC halved, device-build radius ×0.25 (R2 fails); device-build octant `>=`, singleton order, child-center sign (topology check fails). First run 11/12: `1.0e-5f` survived until kinds 6/7 were tightened |
+| E1–E6 | E1 above | E2/E5/E6 in the parent's ledger |
 
-## Segment tree: what it needs (not started)
+## Segment tree: deferred (out of scope for unit 3; not started)
 - `grow_tree_segment` (`:947`) and `ui_tree_segment` (`:1777`) have the same tree skeleton with segments as sources. The per-node center and moments are built from segment midpoints and their Γ·(P2−P1).
 - The leaves call the segment kernel. That is unit 1's `seg_term`, with `RegFunction` 0–4 and the `SegConnct` indirection: 1-based, rows 3/4 unused by the tree.
 - The device source set would be unit 2's segment SoA. The flat preorder/skip layout, the traversal and `multipole` are reusable as is.
 - The build needs its own substep translation (`:1066`), including its own literal `1.0e-5` (`:1179`). Its leaf kernel order must follow `ui_tree_segment_11` (`:1807`).
 - It is VelocityMethod 4: not the default, and used for LL only on request.
 
-## Lessons so far (for the final report)
+## Lessons
 1. **R2 is easiest to satisfy by not changing the approximation.** Keeping the Fortran's topology rules (which are cheap to reproduce exactly: min/max/counts and a float recursion for cell centers) gives E(fast) = E(Fortran) and turns R2 into a rounding-level check. A different, GPU-friendlier tree would trade a guaranteed R2 for speed.
 2. **"Strict GPU-legal" does not need a stack:** a preorder layout with skip pointers gives the recursion's exact visiting order as a flat loop.
 3. **The Fortran tree has a singular corner** (T4) that makes R2's ratio meaningless there. The R2 test must classify such cases instead of dividing by them.
 4. **Test-side traps cost time:** `NWTC_Library%Pi` is 0 until `NWTC_Init`, and editing a bash script while it runs breaks the rest of the script.
 5. Fortran's "parallel tree build" is still serial at the top two levels; so is any Fortran-faithful host build. That serial part is the GPU path's Amdahl term, which motivates the device build.
+6. **A device rewrite of a host algorithm should be testable on the CPU and checkable against the host.** The device build is written over the execution space (team size 1 on host backends), so the whole CPU L0 exercised it in seconds on the login node; the first CUDA run then passed. `OFK_TC_DEVBUILD_CHECK` compares the exact parts (topology, radii, leaf copies) with the host build. It is the only check that catches device-only structural mutations: R2 passes for any valid tree.
+7. **Mutation checks find test gaps that "covers every branch" misses.** The degenerate-extent threshold had straddling cases (0.9e-5 / 1.1e-5), and a `1.0e-5f` literal still survived. A straddle must be tighter than the smallest plausible wrong constant: for a kind trap that is the float-vs-double gap (relative 2.5e-9).
+8. **Amdahl at system level.** The kernel is 1.2–1.6× faster on CPU and the tree build 4× faster on the GPU, but the BAR runs gain 1.08–1.13× on CPU, because the tree is 11–17% of the step. The other host Fortran dominates there (phase-2 residency).
+9. **Freeze the binaries a queued timing job will measure** (`u3d-frozen-*`). Otherwise a rebuild between submission and start silently changes what gets timed.
+
