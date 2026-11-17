@@ -725,6 +725,47 @@ subroutine SetRequestedWindPoints(r_wind, x, p, m)
    !endif
 
 end subroutine SetRequestedWindPoints
+#ifdef OPENFAST_KOKKOS
+
+!> OpenFAST-kokkos unit 4b (wake-wind): slice bounds of the packed r_wind / V_wind arrays, with the counts of
+!! SetRequestedWindPoints (all at maximum size, existing or not): LL CPs 1:iLL_end, NW+FW iLL_end+1:iWake_end,
+!! grid iGrid at iGrid_start(iGrid):iGrid_start(iGrid+1)-1, source panels from iGrid_start(nGridOut+1).
+subroutine ofk_ww_slices(p, m, iLL_end, iWake_end, iGrid_start)
+   type(FVW_ParameterType), intent(in   ) :: p
+   type(FVW_MiscVarType),   intent(in   ) :: m
+   integer(IntKi),          intent(  out) :: iLL_end, iWake_end
+   integer(IntKi),          intent(  out) :: iGrid_start(:)  !< size nGridOut+1
+   integer(IntKi) :: iW, iGrid
+   iLL_end = 0
+   do iW=1,p%nWings
+      iLL_end = iLL_end + p%W(iW)%nSpan
+   enddo
+   iWake_end = iLL_end
+   do iW=1,p%nWings
+      iWake_end = iWake_end + (p%W(iW)%nSpan+1)*(p%nNWMax+1)
+   enddo
+   if (p%nFWMax>0) then
+      do iW=1,p%nWings
+         iWake_end = iWake_end + (FWnSpan+1)*(p%nFWMax+1)
+      enddo
+   endif
+   iGrid_start(1) = iWake_end+1
+   do iGrid=1,p%nGridOut
+      iGrid_start(iGrid+1) = iGrid_start(iGrid) + m%GridOutputs(iGrid)%nx*m%GridOutputs(iGrid)%ny*m%GridOutputs(iGrid)%nz
+   enddo
+end subroutine ofk_ww_slices
+
+!> unit 4b: .true. when time tq lies in [tStart-2 DTaero, tEnd+DTaero] of grid iGrid, a superset of bDoGrid's window
+!! [tStart-DTaero/2, tEnd+DTaero/2] (WriteVTKOutputs, FVW.f90:1622) for readers at tq or tq+DTaero.
+logical function ofk_ww_gridLive(p, m, iGrid, tq)
+   type(FVW_ParameterType), intent(in   ) :: p
+   type(FVW_MiscVarType),   intent(in   ) :: m
+   integer(IntKi),          intent(in   ) :: iGrid
+   real(DbKi),              intent(in   ) :: tq
+   ofk_ww_gridLive = tq >= real(m%GridOutputs(iGrid)%tStart,DbKi) - 2.0_DbKi*p%DTaero .and. &
+                     tq <= real(m%GridOutputs(iGrid)%tEnd,DbKi)   + p%DTaero
+end function ofk_ww_gridLive
+#endif
 
 
 !> Set the requested wind into the correponding misc variables

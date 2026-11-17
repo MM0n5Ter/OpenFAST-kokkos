@@ -1,6 +1,6 @@
 # circulation-solve (OLAF unit 4a; 4b `wake-wind` not in this card's scope)
 
-Unit 4a of the OpenFAST-kokkos port, chosen by the host-time profile in `notes/olaf-unit4.md`: the lifting-line circulation iteration of OLAF with the geometry hoisted out of the `do while` (F10-B, class **B**), in the Kokkos **host** execution space in every build, CUDA included. 4b (wind and tower at the OLAF wind points, AeroDyn) is a separate later unit; its contract and audit rows W1-W6 are kept below unchanged.
+Unit 4a of the OpenFAST-kokkos port, chosen by the host-time profile in `notes/olaf-unit4.md`: the lifting-line circulation iteration of OLAF with the geometry hoisted out of the `do while` (F10-B, class **B**), in the Kokkos **host** execution space in every build, CUDA included. 4b (wind and tower at the OLAF wind points, AeroDyn) is a separate later unit; its contract and audit rows W1-W6 moved to `tests/wake-wind/unit.md`.
 
 - **Owner**: agent session `199ad883` (subagent, unit 4a port). Date: 2026-11-17.
 - **Toolchain**: Kokkos 5.3.0 (C++20), gcc/gfortran 12.3.0, cmake 3.31.12, CUDA 12.3, OpenBLAS 0.3.28.
@@ -68,19 +68,9 @@ subroutine Wings_ComputeCirculationPolarData(z, z_prev, p, x, m, AFInfo, GammaSc
 - **Handle (as built):** the cache lives in a per-instance handle keyed by the address of `m%Sgmt` (as unit 2), in a mutex-guarded process-wide map with LRU cap (`OFK_CS_MAX_HANDLES`, 64) and a `Kokkos::push_finalize_hook`; freed by `FVW_End` through `FVW_Kokkos_Release` (`ofk_cs_free`). 3 reals per (segment, target) plus the ring corners: **1.49 MB for nCP = 87** (7 Kokkos HostSpace Views, all allocated on the first solve). It is **rebuilt from the Fortran arguments on every call and never trusted across calls**, so there is no residency and A7 holds by construction.
 - **Modes (as built):** one body, three translation units: strict (baseline ISA, no contraction), fast F0 (x86-64-v3, no contraction) and fast F1 (x86-64-v3, contraction). The per-target order is the pin's in all three (ring-major, depth, segments 1-2, 3-4, 2-3, 4-1). The FMA policy of the fast mode was decided by the FMA experiment below (the draft card assumed "no FMA in either TU").
 
-### 4b: host wind work at the OLAF wind points (AeroDyn, FVW pack)
+### 4b
 
-> **InflowWind is an external library call** (user decision, 2026-11-17; decisions #14). 4b only changes how often and where AeroDyn calls it. **H1 and W1 are out of scope:** they are recorded only as an upstream suggestion for InflowWind's owners.
-
-| Item | Routine (pin) | Change | Class | Interface |
-|---|---|---|---|---|
-| ~~H1~~ (upstream only) | `UniformField_GetVel` (`IfW_FlowField.f90:385-410`, `pure`, module-private) | Drop `use, intrinsic :: ieee_arithmetic` (`:386`): nothing from the module is used, and gfortran then saves and restores the FP environment on every call | B (bitwise: `scripts/unit4-mb` `ieeemb`, 0 differing of 5.6M points; 14.4× faster per point) | unchanged |
-| H2 | `AD_UpdateStates` (`AeroDyn.f90:1942`), the two `AD_CalcWind` calls on `uInterp` (`:1996`) | Skip the `InflowWakeVel` part (`AD_CalcWind` `:2094-2121`) when `Wake_Mod = FVW`: after the loop, `m%Inflow(1)%InflowWakeVel` is the value from `:1977` (same `utimes(1)`, same `o%WakeLocationPoints`). Keep the rotor and GS parts | B | `AD_CalcWind` is private: add a private variant or an optional argument; `AD_CalcWind_Rotor`/`_GS` (public, `:65-66`) are unchanged |
-| H3 | `SetInputsForFVW` from `AD_UpdateStates` (`AeroDyn.f90:2027` → `:4226-4235` `TwrInflArray` over **all** `r_wind` points, existing or not) | In `AD_UpdateStates`, only these slices of `V_wind` are ever read:<br>- `u(1)`: LL, NW, FW (`FVW.f90:645`, `:1378` through `uInterp`), plus source panels (`FVW_Subs.f90:2105`);<br>- `u(2)`: LL and panels (through `uInterp`, `FVW.f90:1378`).<br>The grid slice is read only from `AD_CalcOutput`'s own `SetInputsForFVW` (`FVW.f90:1618`). So apply `TwrInflArray` only to the read slices for these two calls. The `AD_CalcOutput` call (`:2378`) is unchanged | B | private (`SetInputsForFVW` is not public) |
-| H4 | `SetRequestedWindPoints` (`FVW_Subs.f90:568`, grid block `:606-620`) | Write grid points only when `t+DTaero` is inside a grid's `[tStart − DTaero, tEnd + DTaero]` window, a superset of `bDoGrid` (`FVW.f90:1621-1625`); otherwise `(0,0,0)`, which `UniformField` skips (`z > 0` test, `IfW_FlowField.f90:182`; Grid3D `:229`). This removes 9600 of about 20.6k points from every wind call on the BAR cases. The tower loop still visits them: that is H3's job | B for every output and VTK file. `m%GridOutputs%uGrid` changes at non-output steps (misc, never written there) | unchanged |
-| (later) | `AD_CalcOutput` wind + tower on the wake slice (`AeroDyn.f90:2365`, `:2378`) | Consumed only by grid outputs: needs an FVW query (deferred: Lane D / InflowWind on device) | B | — |
-
-Callers that must keep working: `AD_UpdateStates`/`AD_CalcOutput` from `ADI_*` (driver), the OpenFAST glue (`FAST_Funcs.f90:459-466`), the linearization perturbations (`AeroDyn.f90:7629-7656`: they call `AD_CalcWind_Rotor`/`_GS` and `SetInputsForFVW` directly, so H3 must key on `tIndx`, not on the caller), and FAST.Farm/AWAE (`IfW_FlowField_GetVelAcc` has callers in 4 module directories: H1 speeds them all up, with bitwise-identical results).
+Moved to its own card: **`tests/wake-wind/unit.md`** (contract H1-H4, callers, audit rows W1-W7, gates).
 
 ## Audit list → L0 case
 
@@ -122,12 +112,6 @@ L0 = `tests/circulation-solve/l0_cs.f90`. Every case runs the pin (twice: ref vs
 | C11 | P6: O(nCP²) cache | — | handle, sized on the first solve | `p6_sequence`: 20 solves, allocations after solve 1 = after solve 20 (7, 1.49 MB) |
 | C12 | Re-evaluation, copies (A7) | `FVW.f90:597-615` | nothing trusted across calls | `a7_sequence`: re-evaluation, misc copy (new handle) in between, Eps only / r_NW only / CP changed, orphaned copy; strict and F0; mutation "cache reused" caught (only by A7) |
 | new | The pin is not reproducible when a wing has no control point (uninitialised reads) | LL #b / `Vind_LL` | — | ref vs ref check per case; such cases are gated on Γ, α, \|Vrel\|, ErrStat and iterations |
-| W1 | `use, intrinsic :: ieee_arithmetic` in a per-point `pure` function makes gfortran call `_gfortran_ieee_procedure_entry/exit` on every call. Module-level `USE IEEE_ARITHMETIC` in `NWTC_IO` (`NWTC_IO.f90:25`) does the same to procedures that pick it up (seen in the pin's `ui_leaves_nograd`, 0.7 s) | `IfW_FlowField.f90:386` | Remove the `use`; values unchanged | `l0_ww_ieee`: `IfW_FlowField_GetVelAcc` on 1e5 points, pin vs overlay, bitwise; timing ratio logged |
-| W2 | The `:1996` loop writes `m%Inflow(1)` with time `utimes(i)` (not `BEMT_utimes(i)`) and runs i = 2 then 1: the wake slice ends equal to `:1977`'s only because the last pass is i = 1 | `AeroDyn.f90:1993-2003` | Skip only `InflowWakeVel`; keep the rotor and GS recompute | `l0_ww_wake`: `m%Inflow(1:2)` after `AD_UpdateStates`, pin vs overlay, bitwise, with uniform and Grid3D wind |
-| W3 | `r_wind` is packed `[LL CPs \| NW (all nNWMax+1 rows) \| FW \| grid \| source panels]` at **maximum** size, existing or not | `FVW_Subs.f90:568-638` (`:578-580` note) | Slice boundaries from the same counts; H3 and H4 touch only their slices | `l0_ww_slices`: nGridOut 0/1/2, SrcPnl on and off, FW 0 |
-| W4 | H4's predicate is evaluated at the end of `UpdateStates` for the *next* `CalcOutput` (`t+DTaero`), with `bDoGrid`'s `DTaero/2` tolerances | `FVW.f90:1621-1625` | Use a window one `DTaero` wider on both sides (superset) | `l0_ww_grid`: grid VTK files bitwise vs pin for tStart/tEnd on, just inside and just outside step boundaries |
-| W5 | `TwrInflArray` has a real `!$OMP` loop: serial in every CUDA build (`OPENMP=OFF`), 4.7 s vs 1.4 s (8 threads) on bar-r8 | `AeroDyn.f90:6123-6139` | H3/H4 cut its points; no port | (timing only) |
-| W6 | Linearization calls `SetInputsForFVW` with `tIndx = 1` on perturbed inputs | `AeroDyn.f90:7635, 7654` | H3 keys on `tIndx = 2` inside `AD_UpdateStates` only | `l0_ww_lin`: `AD_JacobianPInput` on an OLAF case: Jacobian columns bitwise vs pin (OLAF linearization is unsupported, `Wake_Mod` 3 cannot linearize: then N-A, recorded) |
 
 
 ## FMA experiment (the fast mode's FMA policy, decided by measurement)

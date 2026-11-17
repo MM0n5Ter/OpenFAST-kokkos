@@ -12,4 +12,4 @@ Every brief the orchestrator gave a phase agent, kept verbatim, so a unit's resu
 | [2026-11-15-u3-treecode-finish](2026-11-15-u3-treecode-finish.md) | a103544e | 8.20 |
 | [2026-11-17-u4-analysis](2026-11-17-u4-analysis.md) | ab03d5bc | 10.05 |
 | [2026-11-17-u4a-circulation-solve-port](2026-11-17-u4a-circulation-solve-port.md) | ae5c936b | 30.38 |
-| [2026-11-17-u4b-wake-wind-phase1](2026-11-17-u4b-wake-wind-phase1.md) | (pending) | — |
+| [2026-11-17-u4b-wake-wind-phase1](2026-11-17-u4b-wake-wind-phase1.md) | aff152a0 | 6.21 |
