@@ -7,8 +7,9 @@ Unit 4a of the OpenFAST-kokkos port, chosen by the host-time profile in `notes/o
 
 ## Status (2026-11-17)
 
-**Done.** Every gate in scope passes on CPU, and the CUDA build was checked on an A100 MIG slice. Nothing is committed and no ledger row was written (the parent does both).
-- **FMA experiment → F1** (fast mode with FMA, consistent with architecture §3), by the rule fixed in advance. F0 (no FMA) stays as `OFK_CS_FMA=0`: bitwise with strict and with the pin, including every iteration count.
+**Done.** Every gate in scope passes on CPU, and the CUDA build was checked on an A100 MIG slice.
+- **Default: F0** (fast mode without FMA in this unit; user decision 2026-11-17, `notes/decisions.md` #15). F1 (with FMA) is an explicit opt-in, `OFK_CS_FMA=1`. The FMA experiment's rule picked F1 on kernel time, but F1 has no measurable end-to-end benefit and exceeds the per-case claim-3 limit in 2 L0 cases, which are kept as reproducible cases ("Recorded F1 failures" below). The limit is unchanged. F1 may be revisited if later profiling shows a meaningful end-to-end benefit.
+- What "bitwise" means here is spelled out in "Bitwise and reproducibility claims" below.
 - **Speed, CPU, P2 config (8 threads, med Xeon 8480+):**
   - solve kernel 79.5 ms → 0.84 ms per solve (pin's `ui_quad_n1` time vs build + replays);
   - whole solve (wsamp) 80 → 1.5 ms;
@@ -17,7 +18,7 @@ Unit 4a of the OpenFAST-kokkos port, chosen by the host-time profile in `notes/o
 - **GPU (A100 MIG, ov4-cuda-a100):** `bar-r8-tree` 34.2 s with `OFK_CS=fortran` → 16.1 s.
 - **Found and fixed by R6:** `ad_Sphere_OLAF` has no lifting-line control point (nCP_tot = 0), and the first build aborted there. The shim now keeps the pin's empty loop. The trees `ov4-*` predate the fix and `ov4b-*` have it; BAR results are bitwise the same on both (job 1926189).
 
-## Files (uncommitted)
+## Files
 
 | File | What |
 |---|---|
@@ -164,14 +165,42 @@ L0 = `tests/circulation-solve/l0_cs.f90`. Every case runs the pin (twice: ref vs
 - kernel time per solve: 0.4–1.5% (8 threads: F0 0.6%, F1 1.0%; 1 thread: F0 0.4%, F1 1.5%);
 - whole run: 0.43 s at 8 threads (2.5%) and 0.14 s at 1 thread (0.3%).
 
-**Decision (rule fixed in advance): F1.**
-1. F1 passes R6 (18/18) and R8: 0 of 542 channels over 2× the envelope in both cases, worst ratio 0.82.
-2. F1's solve time (the kernel this unit runs, per solve) is lower than F0's by 3.8–6.3%, beyond the noise of 0.4–1.5%. The F0 and F1 ranges do not overlap in any of the three series.
+**Outcome of the rule fixed in advance: F1.** F1 passed R6 (18/18) and R8 (0 of 542 channels over 2× the envelope, worst ratio 0.82), and its kernel time per solve was 3.8–6.3% lower than F0's, beyond the 0.4–1.5% noise.
 
-So `kDefaultFma = 1`, consistent with architecture §3, and no exception is recorded. Two caveats:
-- **Whole-run wall time does not separate F0 and F1** beyond its noise: about 0.1 s of 17–49 s. The gain is real but small: the kernel is now about 1.5% of the run.
-- **Claim 3 at L0 (architecture §4: fast vs strict ≤ max(1e-12, 1.1 × the pin's own FMA spread on the same case)) is not in the rule.** Per case it holds in 4 068 of 4 070 L0 cases (10 seeds). It fails in 2 (seeds 6 and 8, ratios 3.9 and 24): the control points lie on their own bound segment (`onLL`), the near-line geometry where the cross product cancels, one of them unregularized (RegFunction 0). There F1's contraction moves Γ by 1.2e-11 and 2.4e-11 relative, against the pin with FMA's 2.8e-12 and 5.2e-13. Neither changed an iteration count. If the parent wants claim 3 as a condition for F1, these two cases flip the outcome to F0: one constant (`kDefaultFma`) or `OFK_CS_FMA=0`.
-- What the analysis feared does exist, but only at a knife edge that real runs never hit, and the Fortran built with FMA has it at the same rate. It belongs to the natural envelope, not to the port (architecture §3 updated).
+**Decision (user, 2026-11-17, `notes/decisions.md` #15): default F0; F1 opt-in (`OFK_CS_FMA=1`).** The rule's outcome was not adopted, because:
+- **Whole-run wall time does not separate F0 and F1** beyond its noise (about 0.1 s of 17–49 s; the kernel is about 1.5% of the run). F1 has no measurable end-to-end benefit in the current runs.
+- **F1 fails the per-case claim-3 limit** (architecture §4: fast vs strict ≤ max(1e-12, 1.1 × the pin's own FMA spread on the same case)) in 2 of 4 070 L0 cases. The fixed rule did not include this limit; the limit itself is kept unchanged.
+- With F0 the fast mode's circulation solve is bitwise with strict and the pin, so there is no reason to break the FMA-neutral result for an unmeasurable gain.
+
+`kDefaultFma = 0` in `circulation.cpp`. This is a recorded exception to architecture §3's "fast mode keeps FMA" for this unit.
+
+Knife edge: when ConvCrit is placed within ulps of a solve's convergence ratio (L0 bisection), F1 changes 2–6 of 16 iteration counts per seed, and the pin built with FMA 2–5. Real inputs (600 BAR solves, the r-test set, 4 070 random cases) did not hit it.
+
+### Recorded F1 failures (claim 3, per case)
+Both are random L0 cases from 400-case runs, kept as fixed, reproducible cases in `l0_cs.f90` (`recorded_cases`, generator state `rec_rng`). They run in every L0 invocation after the random cases. The exact variants (strict, F0) are gated on them like on any case; F1's ratio is printed, not gated (F1 is opt-in). Reproduced with the final source (`opt/build/u4a-jobs/l0_cs.rec-find.seed{6,8}.log`) at the same values as the original runs.
+
+| | origin | generator state before `rand_cfg` | inputs (from `rand_cfg`) | F1 \|ΔΓ\|/max\|Γ\| | pin+FMA | ratio to the limit | iteration change |
+|---|---|---|---|---|---|---|---|
+| 1 | `OFK_L0_SEED=6 OFK_L0_CASES=400` | `-3469895770392615260` | 3 wings, RegFunction 2, degenerate type 4 (±0 initial Γ), iNWStart 1, control points on the bound segment (`onLL`), epsScale 0.176 | 1.194e-11 | 2.819e-12 | 3.85 | 0 |
+| 2 | `OFK_L0_SEED=8 OFK_L0_CASES=400` | `-629506827529011285` | 3 wings, RegFunction 0 (unregularized), degenerate type 6 (NaN in unread Eps rows), iNWStart 3, `onLL`, epsScale 1.42 | 2.425e-11 | 5.223e-13 | 24.2 | 0 |
+
+**Explanation (plausible, not established).** In both cases the control points lie on their own bound segment, where the Biot–Savart cross product `ya*zb - za*yb` subtracts two nearly equal products. FMA keeps one product unrounded, and in a cancelling difference that change of under 1 ulp of the products can be a large relative change of the result, which the iteration then carries into Γ. This fits both cases and the fact that the pin built with FMA also moves there. It has not been demonstrated (for example by isolating the term that differs), and the differences are not declared harmless: they are 4–24× outside the accepted limit, and that limit stays as it is.
+
+### Bitwise and reproducibility claims
+Two different kinds of claim, kept apart.
+
+**A. Equality with the original Fortran** (the pin, same compiler and flags, OpenMP off or 1 thread; CPU):
+
+| Port setting | Compared output | Result |
+|---|---|---|
+| L0, strict and F0 (each with the serial and the `parallel_for` path) vs the pin's solve on the same inputs | `Gamma_LL`, `alpha_LL`, `Vreln_LL`, `Vind_CP`, `Vtot_CP`, `Vind_LL` (every element, bit pattern), ErrStat, the iteration count (`l0_cs.f90` `compare`) | identical in every case, 10 seeds, knife edges and recorded cases included. 2 cases per seed compare `Gamma_LL`, `alpha_LL`, `Vreln_LL`, ErrStat and iterations only, because the pin itself gives different velocity values between two runs there (uninitialised reads, zero-span wing) |
+| Whole runs, `OFK_MODE=strict` (all units strict) vs base₁ (pin, Fortran OpenMP, 1 thread) | `ad_driver.out` from line 8, bar-r8-tree and bar-r8-direct; per-solve iteration counts | identical (jobs 1925585, 1926189, 1933876) |
+| Whole runs, F0 with the other units strict (`OFK_MODE=strict OFK_CS_MODE=fast`) | the same, and `.outb` of the r-test OLAF cases vs the pin | identical (jobs 1925585, 1925871) |
+| **Default fast mode** (`OFK_MODE=fast`: units 1–3 fast, this unit F0) | whole-run outputs | **not** identical to the Fortran: units 1–3's fast mode moves results within R8 (0 of 542 channels over 2× the FMA envelope). This unit's part is still exact: the iteration counts equal the pin's on every solve |
+| F1 (opt-in) | | not identical; within R8, recorded failures above |
+| GPU builds | | not identical to the CPU or the pin (decision #12). L0 strict and F0 are identical to the pin on the GPU build only when the lifting-line induction is the Fortran's (isolation run); with unit 2's GPU kernel Γ moves ≤ 4.5e-16 relative |
+
+**B. Reproducibility** (same build, same mode, run again): identical outputs across 1/4/8 threads and across processes for strict, F0 and F1 (R7: L0 dumps, whole runs on CPU; two processes on the GPU). This says nothing about equality with the Fortran.
 
 ## Gate results (2026-11-17)
 CPU = Xeon 8480+ (`med`, or the login node for L0); GPU = A100 MIG 2g.20gb (`interactive_gpu`, EPYC 7443 host).
@@ -217,12 +246,13 @@ So: build parallel from 512 pairs, replay from 2048 pairs (the 8-thread crossove
 | 1925871 `-rtest` | R6 strict/F0/F1, r-test iteration counts, P4 (ov4b-omp) | above |
 | 1925772 `-fmatime` | interleaved F0/F1 timing; P6 memtool; perf_cs | above |
 | 1925691, 1926054 `-mig` | CUDA build on A100 MIG: L0, bar-r8-tree, Sphere (ov4-cuda-a100, ov4b-cuda-a100) | above |
-| 1926189 `-final` | ov4b-fomp (final source, default F1) = the experiment's F1/F0 outputs | bar-r8-tree and bar-r8-direct: default = experiment F1, `OFK_CS_FMA=0` = experiment F0, strict = base₁, all IDENTICAL from line 8; the log line shows `fma=1` |
+| 1926189 `-final` | ov4b-fomp (source with the F1 default, superseded) = the experiment's F1/F0 outputs | bar-r8-tree and bar-r8-direct: default = experiment F1, `OFK_CS_FMA=0` = experiment F0, strict = base₁, all IDENTICAL from line 8; the log line shows `fma=1` |
+| 1933876 `-default`, 1933877 `-migdefault` | the F0-default source (`kDefaultFma = 0`), ov4b-fomp / ov4b-omp / ov4b-cuda-a100 | log line `fma=0`. bar-r8-tree and bar-r8-direct: default = the experiment's F0 output, `OFK_CS_FMA=1` = its F1 output, strict = base₁, all IDENTICAL from line 8; default iteration counts = the pin's on 300/300 solves each. R6 18/18 in default fast mode and in strict (1 thread). A100 MIG: default = `OFK_CS_FMA=0` = `OFK_CS=fortran`, IDENTICAL. L0 (login node): ctest 5/5, seeds 1–10 PASS, recorded cases reproduce (3.850, 24.245) |
 
-Trees: `opt/build/u4a-omp`, `u4a-cuda-a100` (L0), `u4a-mut` (mutations), `ov4-{fomp,omp,off,sp-omp,cuda-a100}` (first source), `ov4b-{omp,fomp,cuda-a100}` (with the nCP_tot = 0 fix; `ov4b-fomp`/`-cuda-a100` rebuilt with the F1 default; `ov4b-omp` still defaults to F0 because job 1925871 used it, so rebuild it before reuse).
+Trees: `opt/build/u4a-omp`, `u4a-cuda-a100` (L0), `u4a-mut` (mutations), `ov4-{fomp,omp,off,sp-omp,cuda-a100}` (first source), `ov4b-{omp,fomp,cuda-a100}` (with the nCP_tot = 0 fix; all three rebuilt with the F0 default, `opt/build/u4a-build-chain5.sh`).
 
 ## Lessons
-1. **Measure the Fortran's own FMA build on the discrete decision before declaring an FMA exception.** The convergence-flip hazard is real, but only within ulps of a knife edge, and the pin built with FMA flips there just as often. Real inputs (600 BAR solves, the r-test set, 4 070 random L0 cases) never hit it.
+1. **Measure the Fortran's own FMA build on the discrete decision, and judge FMA on end-to-end time.** The convergence-flip hazard showed up only within ulps of a knife edge, where the pin built with FMA flips at a similar rate; real inputs did not hit it. But a kernel-only gain (4–6% here) that does not show in the whole run is not a reason to give up exactness: the user kept F0 as default (decision #15).
 2. **Iteration counts without editing anything:** `ld --wrap` around a cross-file call in L0; a 100-line ptrace breakpoint counter for whole binaries (no gdb or perf on this cluster). Validate the tracer against an in-code counter on the same binary, and check that traced outputs are bitwise the untraced ones.
 3. **ref vs ref per case** found pin non-determinism (uninitialised reads with a zero-span wing). A single global ref-ref run would have hidden which cases are valid oracles.
 4. **R6 found what L0 did not:** a geometry with no lifting line at all (`ad_Sphere_OLAF`). Shims must accept empty extents. L0 now covers it.
@@ -231,7 +261,4 @@ Trees: `opt/build/u4a-omp`, `u4a-cuda-a100` (L0), `u4a-mut` (mutations), `ov4-{f
 7. The rule "-j 12 total" was briefly exceeded when a chained build script did not stop after a failed step and overlapped the next chain. Chain scripts need `|| exit 1`.
 
 ## Resume
-Nothing is pending. Job 1925586 was still running only its optional wsamp profiles of bar-r8-direct when this card was finished; its P2 numbers above are complete. Before the trees are reused:
-- `ov4b-omp` was rebuilt with the F1 default after job 1925871;
-- the `ov4-*` trees (first source, without the nCP_tot = 0 fix) should not be used for new evidence;
-- the parent session writes the ledger row (E2/E5/E6) and commits.
+Nothing is pending. Job 1925586 was cancelled by the parent after its P2 runs (only optional wsamp profiles of the pin remained). The `ov4-*` trees (first source, without the nCP_tot = 0 fix) should not be used for new evidence. Revisit F1 only if profiling shows a meaningful end-to-end benefit.

@@ -61,13 +61,14 @@ Build facts from unit 1, which still hold:
   - `omp simd` on the lane loop;
   - the Fortran's far-field `exp` skip kept (a vector `exp` on every pair was slower);
   - checked with `-fopt-info-vec`.
-- **Discrete decisions downstream of a kernel (convergence tests, iteration caps) do not by themselves justify an FMA-free fast mode** *(unit 4a, measured 2026-11-17)*. The unit-4 analysis expected that ulp changes would flip OLAF's circulation-convergence test and move Γ by up to `ConvCrit`·|Γ|, and proposed FMA-free fast mode for that kernel as an exception to this section. Measured on the pin itself and on the port (`tests/circulation-solve/unit.md`, FMA experiment):
+- **Exception: unit 4a's fast mode is FMA-free by default** (user decision 2026-11-17, [decisions.md](decisions.md) #15). F1 (with FMA) is opt-in, `OFK_CS_FMA=1`. Reason: F1's 4–6% kernel gain does not show in whole-run time, and F1 exceeds the per-case claim-3 limit (§4, unchanged) in 2 recorded L0 cases; with F0 the solve stays bitwise with strict and the pin. Revisit if profiling later shows a meaningful end-to-end benefit.
+- **Discrete decisions downstream of a kernel (convergence tests, iteration caps)** *(unit 4a, measured 2026-11-17)*. The unit-4 analysis expected that ulp changes would flip OLAF's circulation-convergence test and move Γ by up to `ConvCrit`·|Γ|. Measured on the pin itself and on the port (`tests/circulation-solve/unit.md`, FMA experiment):
   - with FMA, neither the port nor the pin changed one iteration count in 600 BAR solves, the r-test OLAF cases or 4 070 random L0 cases;
-  - flips appear only when ConvCrit is put within ulps of a solve's ratio, and then the pin built with FMA flips just as often;
+  - flips appeared only when ConvCrit was put within ulps of a solve's ratio, and then the pin built with FMA flipped at a similar rate (2–5 vs F1's 2–6 of 16);
   - the drift stayed inside 2× the FMA envelope;
   - the FMA variant was faster beyond noise (kernel 4–6%).
-  - By the decision rule fixed in advance, the fast mode keeps FMA (`OFK_CS_FMA=1`), consistent with this section. The FMA-free variant stays available (`OFK_CS_FMA=0`) and is bitwise with strict and the pin, including iteration counts.
-  - Rule for later units: measure the Fortran's own FMA build on the same decision before declaring an exception. The hazard belongs to the natural envelope.
+  - the rule fixed in advance therefore picked F1, but the user kept F0 as the default (exception above): the gain was kernel-only, and 2 L0 cases exceed the per-case limit.
+  - Rule for later units: measure the Fortran's own FMA build on the same decision, judge FMA by end-to-end time, and check the per-case claim-3 limit as part of the decision.
 - **CPU↔GPU bitwise is not a goal** (user decision, 2026-11-14). Getting it would cost GPU speed, through portable math and a fixed order. Strict mode on the GPU is still useful: it isolates math-library differences from ordering differences.
 
 ## 4. Equivalence: a chain of claims, each with its own test
@@ -116,6 +117,6 @@ Below a measured `N_min`, a unit runs in the host execution space (P4). Same sou
 
 Deferred until after the three: phase-2 residency (wake time-stepping, F3/F4/F9), the host-side circulation solve (F10), and VTK/IO.
 
-**Unit 4a `circulation-solve` (ported 2026-11-17, `tests/circulation-solve/unit.md`):** F10-B in the Kokkos host space; strict and F0 bitwise with the pin including per-solve iteration counts; the BAR solve 80 ms → 1.5 ms per call (8 threads), whole runs 2.5–2.6× faster than pin+OpenMP on CPU and 2.1× on the A100 MIG slice.
+**Unit 4a `circulation-solve` (ported 2026-11-17, `tests/circulation-solve/unit.md`):** F10-B in the Kokkos host space. Its fast mode defaults to F0 (no FMA; F1 opt-in, decision #15). Strict and F0 give the pin's solve outputs and per-solve iteration counts bit for bit on CPU (L0, and whole runs with the other units strict); the default fast mode's whole-run outputs differ from the Fortran only through units 1–3's fast mode (within R8). The BAR solve 80 ms → 1.5 ms per call (8 threads), whole runs 2.5–2.6× faster than pin+OpenMP on CPU and 2.1× on the A100 MIG slice.
 
 **Unit 4 (analysis 2026-11-17, [olaf-unit4.md](olaf-unit4.md)):** the profile picks the host circulation solve (F10-B, class B, Kokkos host space) and the wind-point host work in AeroDyn/InflowWind. Phase-2 residency stays deferred: wake time-stepping is ≤ 0.25% of the runs. Draft card: `tests/circulation-solve/unit.md`.

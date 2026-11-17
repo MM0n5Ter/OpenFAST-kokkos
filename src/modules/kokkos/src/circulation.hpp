@@ -16,7 +16,7 @@
 //   OFK_CS=kokkos|fortran     kokkos (default): this unit; fortran: the pin's ui_quad_n1 loop (A/B)
 //   OFK_CS_MODE=strict|fast   this unit's mode (default: OFK_MODE)
 //   OFK_CS_FMA=0|1            fast mode only: 0 = TU circulation_fast (no contraction, F0: bitwise),
-//                             1 = TU circulation_fastfma (contraction, F1). Default 1 (FMA experiment)
+//                             1 = TU circulation_fastfma (contraction, F1, opt-in). Default 0 (decisions.md #15)
 //   OFK_CS_PAR_MIN=<pairs>    targets x segments from which the replay runs as a parallel_for (P4)
 //   OFK_CS_PAR_MIN_BUILD=<pairs>  the same for the cache build
 //   OFK_CS_ITERS=<file>       one line per solve: "<solve> <iterations> <cap>" (FMA experiment, C4)

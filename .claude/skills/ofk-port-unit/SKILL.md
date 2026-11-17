@@ -37,6 +37,7 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
    - Select the mode at runtime with `OFK_MODE`. Strict must be class B against the Fortran on the CPU; fast must reach the declared class against strict.
    - Wrap the body in a mode namespace (ODR, architecture.md §3). Follow the CPU vectorization recipe there, and check it with `-fopt-info-vec`.
    - Measure the Fortran's own FMA spread (`l0_*_ffma`) before declaring the fast-mode bound.
+   - An FMA variant must earn its place end to end: if the gain shows only in the kernel, or any L0 case exceeds the per-case claim-3 limit, keep the FMA-free variant as default (decision #15). Keep every case that exceeds a limit as a fixed, reproducible L0 case, and call an explanation plausible until it is shown.
    - Template: `src/modules/kokkos/src/biotsavart_direct_*` and `tests/biotsavart-direct/`.
    - Both modes must be deterministic.
 

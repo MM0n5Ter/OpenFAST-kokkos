@@ -102,13 +102,25 @@ program l0_cs
    real(ReKi) :: c3worst = 0.0_ReKi              ! worst rel(F1) / max(1e-12, 1.1 rel(pin+FMA))
    integer    :: nrefref = 0                ! cases where the pin is not reproducible (core outputs gated)
    integer    :: kn = 0, knF1 = 0, knFma = 0   ! knife-edge solves; with F1 / pin+FMA count /= pin
+   ! Recorded F1 claim-3 failures (tests/circulation-solve/unit.md, "Recorded F1 failures"): the random cases of
+   ! the 400-case runs of seeds 6 and 8 where F1 exceeded the per-case bound. A random case is fully determined by
+   ! the generator state before rand_cfg(); replayed every run (after the random cases, generator restored).
+   integer, parameter :: NREC = 2
+   integer(8), parameter :: rec_rng(NREC) = [-3469895770392615260_8, -629506827529011285_8]
+   character(len=24), parameter :: rec_name(NREC) = [character(len=24) :: 'seed 6, 400 cases', 'seed 8, 400 cases']
+   integer(8) :: case_rng = 0                 ! generator state before the current random case's rand_cfg()
+   integer    :: irec = 0                     ! > 0 while replaying recorded case irec
+   real(ReKi) :: rec_ratio(NREC) = -1.0_ReKi, rec_relF1(NREC) = 0.0_ReKi, rec_relF(NREC) = 0.0_ReKi
+   integer    :: rec_dit(NREC) = 0
    integer    :: i
 
    call init()
    call fixed_cases()
    do i = 1, ncases
+      case_rng = rngs
       call one_case(rand_cfg(), 'random')
    end do
+   call recorded_cases()
    call knife_cases()
    call a7_sequence()
    call p6_sequence()
@@ -503,15 +515,19 @@ contains
             if (.not. vexact(v)) vitdhist(max(-30,min(30,dit))) = vitdhist(max(-30,min(30,dit))) + 1
          end if
          vrel(v) = max(vrel(v), rel)
-         if (.not. vexact(v) .and. .not. core) then   ! claim 3 with FMA (architecture.md §4): <= max(1e-12, 1.1 x pin's FMA spread), same case
+         if (.not. vexact(v) .and. .not. core .and. irec > 0) then   ! recorded case: reported on its own
+            bnd = max(1.0e-12_ReKi, 1.1_ReKi*relF)
+            rec_ratio(irec) = rel/bnd; rec_relF1(irec) = rel; rec_relF(irec) = relF; rec_dit(irec) = dit
+         else if (.not. vexact(v) .and. .not. core) then   ! claim 3 with FMA (architecture.md §4): <= max(1e-12, 1.1 x pin's FMA spread), same case
             bnd = max(1.0e-12_ReKi, 1.1_ReKi*relF)
             c3n = c3n + 1
             c3worst = max(c3worst, rel/bnd)
             if (rel > bnd .or. dit /= 0) then
                c3fail = c3fail + 1
-               print '(a,a,a,i0,a,i0,a,i0,a,i0,a,l1,a,es10.3,a,es10.3,a,es10.3)', 'NOTE F1 outside the claim-3 bound (', label, &
-                  ') reg=', c%reg, ' degen=', c%degen, ' nWings=', c%nWings, ' iNWStart=', c%iNWStart, ' onLL=', c%onLL, &
-                  ' epsScale=', c%epsScale, ': F1 ', rel, ' pin+FMA ', relF
+               print '(a,a,a,i0,a,i0,a,i0,a,i0,a,i0,a,l1,a,es10.3,a,es10.3,a,es10.3,a,i0)', 'NOTE F1 outside the claim-3 bound (', &
+                  label, ') seed=', seed, ' reg=', c%reg, ' degen=', c%degen, ' nWings=', c%nWings, ' iNWStart=', c%iNWStart, &
+                  ' onLL=', c%onLL, ' epsScale=', c%epsScale, ': F1 ', rel, ' pin+FMA ', relF, &
+                  ' replay state (rngs before rand_cfg; random cases only)=', case_rng
             end if
          end if
          if (nd > 0) vbit(v) = vbit(v) + 1
@@ -535,6 +551,20 @@ contains
       call FVW_DestroyMisc(r%m, ErrStat, ErrMsg)
       call FVW_DestroyConstrState(r%z, ErrStat, ErrMsg)
    end subroutine teardown_res
+
+   !> Replay the recorded F1 claim-3 failures (kept as reproducible inputs; F1 is opt-in, OFK_CS_FMA=1). The exact
+   !! variants are gated on them like on any case; F1's ratio is reported, not gated.
+   subroutine recorded_cases()
+      integer(8) :: saved
+      integer :: k
+      saved = rngs
+      do k = 1, NREC
+         if (rec_rng(k) == 0_8) cycle
+         rngs = rec_rng(k); case_rng = rec_rng(k); irec = k
+         call one_case(rand_cfg(), 'recorded F1 failure, '//trim(rec_name(k)))
+      end do
+      irec = 0; rngs = saved
+   end subroutine recorded_cases
 
    subroutine fixed_cases()
       type(cfg_t) :: c
@@ -784,6 +814,11 @@ contains
             eitd, ' (max |delta| ', eitdmax, '), max |dGamma|/max|Gamma| ', erel
       print '(a,i0,a,i0,a,f8.3,a)', 'F1 claim-3 check per case (|dGamma| <= max(1e-12, 1.1 x pin+FMA spread) and same iterations): ', &
             c3n - c3fail, '/', c3n, ' within, worst ratio ', c3worst, ' [info: FMA]'
+      do k = 1, NREC
+         print '(a,a,a,f8.3,a,es10.3,a,es10.3,a,i0,a)', 'recorded F1 claim-3 failure (', trim(rec_name(k)), '): ratio ', &
+               rec_ratio(k), ' (F1 ', rec_relF1(k), ', pin+FMA ', rec_relF(k), ', iteration delta ', rec_dit(k), &
+               ') [info: F1 is opt-in; > 1 means the failure still reproduces]'
+      end do
       ntot = 0
       write(*, '(a)', advance='no') 'iteration delta histogram, F1 - pin:'
       do k = -30, 30

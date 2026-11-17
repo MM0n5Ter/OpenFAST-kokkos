@@ -23,11 +23,11 @@
 namespace ofk_cs {
 namespace {
 
-// FMA policy of this unit's fast mode, decided by the FMA experiment (tests/circulation-solve/unit.md, rule fixed
-// in advance): F1 passed R6 and R8 and its solve kernel is faster than F0's beyond the run-to-run noise, so the
-// fast mode keeps FMA as architecture.md §3 says. 1 = F1 (contraction), 0 = F0 (no contraction: bitwise to strict
-// and the pin; OFK_CS_FMA=0).
-constexpr int kDefaultFma = 1;
+// FMA policy of this unit's fast mode (user decision 2026-11-17, notes/decisions.md #15): default F0, no
+// contraction, so the fast mode's circulation solve is bitwise with strict and the pin, iteration counts included.
+// F1 (contraction) is an explicit opt-in, OFK_CS_FMA=1: its solve kernel is 4-6% faster, but no end-to-end gain was
+// measured, and it exceeds the per-case claim-3 bound in 2 recorded L0 cases (tests/circulation-solve/unit.md).
+constexpr int kDefaultFma = 0;
 
 struct Config {
   bool enabled = true;

@@ -71,6 +71,7 @@
 
     After them, a working architecture must exist that carries every high-level idea, even if it is not perfect. Each unit is ported by a fresh-context subagent.
 14. **Unit 4 boundary: other modules are external library calls** (user, 2026-11-17). Unit 4b may change how often and where AeroDyn calls InflowWind. It does not edit, overlay or port InflowWind, so the IEEE fix (`IfW_FlowField.f90:386`) goes to InflowWind's owners as an upstream suggestion. The general rule: a unit's boundary stops at calls into a module it does not own. See `notes/olaf-unit4.md` §3.1.
+15. **Unit 4a fast mode: no FMA by default** (user, 2026-11-17). The circulation solve's fast mode uses F0 (no contraction; bitwise with strict and the pin, iteration counts included). F1 (contraction) is an explicit opt-in, `OFK_CS_FMA=1`. The FMA experiment's rule picked F1 on a 4–6% kernel gain, but the whole run shows no measurable benefit and F1 exceeds the per-case claim-3 limit in 2 L0 cases. The limit stays unchanged, and the two cases are kept as reproducible L0 cases (`tests/circulation-solve/unit.md`). Revisit F1 if profiling later shows a meaningful end-to-end benefit; no further FMA experiments until then. An exception, for this unit only, to the open item "FMA in fast mode: keep it" below.
 11. **Precision.** Target `DOUBLE_PRECISION=ON` (ReKi = 8 bytes, the default). The single-precision build must keep compiling, since upstream just added single-precision unit tests (#3511, the pinned commit). The C++ side picks its real type from the `OPENFAST_DOUBLE_PRECISION` macro that OpenFAST already defines for all languages.
 
 ## Open items / TODO
@@ -85,6 +86,7 @@
 - [x] **FMA in fast mode: keep it** (user, 2026-11-14). Where FMA moves results more than the class bound, the bound for chain claim 3 is **1.1 × the pin Fortran's own FMA-vs-no-FMA spread on the same inputs** (`l0_*_ffma`).
   - Unit 1's `ui_seg`: 1.1e-11 on random targets placed near the segment line. The Fortran built with FMA moves by the same amount.
   - Unit 2, realistic lattices: 8.2e-14, the same as the Fortran with FMA.
+  - Exception: unit 4a defaults to no FMA (decision #15).
 - [ ] Build a scaled OLAF performance case: scale up `ad_BAR_OLAF` or `ad_B1n2_OLAF`, or ask NLR for the OC7 Phase III case.
 - [ ] Baseline r-test on our cluster at `OMP_NUM_THREADS=1`. Record known failures and timings before any change.
 - [ ] Check whether FAST.Farm cases can run OLAF per turbine. If yes, FAST.Farm joins the API gate for the OLAF unit.
