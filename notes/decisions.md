@@ -70,6 +70,7 @@
     3. the particle treecode.
 
     After them, a working architecture must exist that carries every high-level idea, even if it is not perfect. Each unit is ported by a fresh-context subagent.
+14. **Unit 4 boundary: other modules are external library calls** (user, 2026-11-17). Unit 4b may change how often and where AeroDyn calls InflowWind. It does not edit, overlay or port InflowWind, so the IEEE fix (`IfW_FlowField.f90:386`) goes to InflowWind's owners as an upstream suggestion. The general rule: a unit's boundary stops at calls into a module it does not own. See `notes/olaf-unit4.md` §3.1.
 11. **Precision.** Target `DOUBLE_PRECISION=ON` (ReKi = 8 bytes, the default). The single-precision build must keep compiling, since upstream just added single-precision unit tests (#3511, the pinned commit). The C++ side picks its real type from the `OPENFAST_DOUBLE_PRECISION` macro that OpenFAST already defines for all languages.
 
 ## Open items / TODO

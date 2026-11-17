@@ -42,7 +42,7 @@ The wake time-stepping that phase-2 residency would move to the device (CCSD mea
 | | Scope | Class | Expected gain (BAR, from the profile and microbenchmarks) |
 |---|---|---|---|
 | **4a `circulation-solve`** | F10-B (§2.1): the geometry of the circulation iteration is built once per solve (a "square" Kokkos kernel in the **host** execution space), and each iteration replays only the Γ statement of `ui_seg_11` in the pin's order | **B** (bitwise, so the iteration count cannot change) | Circulation solve 23.7 s → **2.3 s serial / about 0.4 s with 8 threads**. CPU: **1.2–2.4×** whole run (tree cases most) |
-| **4b `wake-wind`** | H1 IEEE fix in `UniformField_GetVel`; H2 skip 2 of the 5 wake-point wind evaluations per step, whose values are recomputed identically; H3 tower influence only on the slices read; H4 grid points only inside the grid window | **B** | Wind 9.7–12.2 s → about 0.3–0.5 s; tower (serial, as on the GPU) 4.8–8.4 s → 2.5–4.9 s |
+| **4b `wake-wind`** | ~~H1 IEEE fix~~ (out of scope: InflowWind is an external library, user 2026-11-17); H2 skip 2 of the 5 wake-point wind evaluations per step, whose values are recomputed identically; H3 tower influence only on the slices read; H4 grid points only inside the grid window | **B** | Wind 9.7–12.2 s → about 0.3–0.5 s; tower (serial, as on the GPU) 4.8–8.4 s → 2.5–4.9 s |
 | **4a + 4b** | | B | **CPU (P2 config): r8-tree 40.7 → about 7.3 s (5.6×); perf-tree 48.4 → about 12.4 s (3.9×); r8-direct 74.8 → about 41 s (kernel-bound, 1.8×).** **GPU: r8-direct 37.8 → about 8.4 s (4.5×); r8-tree 34.1 → about 5.4 s (6.3×); perf-direct 46.2 → about 13.4 s (3.4×).** After unit 4 the GPU runs are 30–52% kernel |
 
 - **F10 is a bigger win than residency:** 23.7 s against ≤ 0.12 s of time-stepping (about 200×), or against 0.4–0.9 s with the pack included (about 30×).
@@ -251,9 +251,11 @@ AD_CalcOutput (AeroDyn.f90:2329)
   - `ui_quad_n1` stays as it is.
   - Gates: claim 1 (bitwise, including per-solve iteration counts), R6, R7, R8 (bitwise, so drift 0), P2, P4 (serial fallback), P6, A1/A2/A5, A7 (stateless: the test still runs).
   - Card: `tests/circulation-solve/unit.md`.
-- **4b `wake-wind`** (AeroDyn + InflowWind + one FVW pack routine; host Fortran only, no Kokkos): H1–H4.
-  - Separate gates: R6 (including `aerodyn_utest` and glue OLAF cases with `NumCrctn` ≥ 1, plus the IfW-driver r-tests for H1); outputs and VTK bitwise from line 8; P2.
-  - It belongs to Lane D for H1 and to AeroDyn for H2/H3. Its audit rows are W1–W6 in the same card. If the owners differ, split it into its own card at port time.
+- **4b `wake-wind`** (AeroDyn + one FVW pack routine; host Fortran only, no Kokkos): H2–H4.
+  - **InflowWind is an external library call (user decision, 2026-11-17).** 4b changes only *how often and where* AeroDyn calls `IfW_FlowField_GetVelAcc`. It never edits, overlays or ports InflowWind.
+  - So **H1 (the IEEE fix in `UniformField_GetVel`) is out of scope.** It is kept as an upstream suggestion for InflowWind's owners (audit #15). Without H1, each remaining wind point still costs the ~14× IEEE overhead. The wind projection in §3.2 assumed H1, so it is too optimistic: re-measure after H2–H4.
+  - Separate gates: R6 (including `aerodyn_utest` and glue OLAF cases with `NumCrctn` ≥ 1); outputs and VTK bitwise from line 8; P2.
+  - Its audit rows are W2–W6 in the same card. W1, the H1 row, is upstream only.
 - Order: 4a first. It is the larger win, it is self-contained in OLAF, and it needs no other lane.
 
 ### 3.2 Expected gains (projection from the measured buckets)
