@@ -12,4 +12,5 @@ These are working notes. Numbers were measured on `deps/openfast` at `12fa3fc` w
 - [criteria.md](criteria.md): **the gates as numbered checks**: API (A1–A8), Regression with equivalence classes B/R1/R2/S (R1–R7), Performance (P1–P6), Placement (L1–L4), Fusion legality (F1–F5), effort metrics (E1–E4)
 - [architecture.md](architecture.md): **the shape of every ported unit**: code layout (overlay in `src/`, `ofk_kernels`), one source with strict and fast modes, the equivalence chain, per-instance device handles, and the three units that establish it
 - [olaf-placement.md](olaf-placement.md): **OLAF, CPU vs GPU per routine**: the step anatomy with calls per step, the host↔device boundary, kernel shapes, the fusion plan (F1–F8) and the porting audit list
+- [olaf-unit4.md](olaf-unit4.md): **the host-time profile after units 1–3 and the choice of unit 4**: the circulation solve (F10-B) and the wind-point host work come first; residency is deferred
 - [harness.md](harness.md): **how to build the test harness for each translated file or library**: L0 oracle tests, regression, API checks and performance runs
