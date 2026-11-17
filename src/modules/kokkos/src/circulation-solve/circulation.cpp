@@ -4,7 +4,7 @@
 #include "circulation.hpp"
 
 #include "circulation_common.hpp"
-#include "ofk_runtime.hpp"
+#include "common/ofk_runtime.hpp"
 
 #include <Kokkos_Core.hpp>
 

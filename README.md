@@ -9,7 +9,7 @@ An agentic, **API-preserving**, repository-level migration of [OpenFAST](https:/
 | Path | Contents |
 |---|---|
 | `notes/` | Working notes: decisions, landscape, OpenFAST structure, downstream consumers, testing, roadmap, **how to build Kokkos with Fortran**, **how to build the test harness** ([index](notes/README.md)) |
-| `src/` | **The port.** It is an overlay on the pin: full copies of only the changed OpenFAST files (`src/modules/aerodyn/src/FVW*.f90`) and the C++/Kokkos library `src/modules/kokkos/`. The overlay is swapped into the pin's unmodified CMake by `src/cmake/ofk_overlay.cmake`. See [overlay](notes/overlay.md) and [architecture](notes/architecture.md). |
+| `src/` | **The port.** It is an overlay on the pin: full copies of only the changed OpenFAST files (`src/modules/aerodyn/src/FVW*.f90`) and the C++/Kokkos library `src/modules/kokkos/` (one directory per unit; map in `src/README.md`). The overlay is swapped into the pin's unmodified CMake by `src/cmake/ofk_overlay.cmake`. See [overlay](notes/overlay.md) and [architecture](notes/architecture.md). |
 | `deps/openfast/` | Submodule: upstream OpenFAST, pinned to `dev` `12fa3fc` (2026-11-06). It is the frozen baseline and the oracle for every comparison. **Never edit it.** |
 | `scripts/` | Analysis scripts that produce the numbers in `notes/`. Each one defaults to `deps/openfast`. |
 | `examples/fortran-kokkos/` | Minimal template of the pattern every unit follows: the frozen Fortran, the port behind the same interface, the C++/Kokkos kernel, an L0 differential test and a shared-library (C binding) check |

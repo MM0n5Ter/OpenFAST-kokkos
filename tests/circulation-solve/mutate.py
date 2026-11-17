@@ -5,7 +5,7 @@ never on the repo (another build may read src/). Each mutation: patch the copy, 
 The copy's tree must be what the build compiles (CMake ofk_sources.cmake resolves src/ relative to itself)."""
 import os, re, subprocess, sys
 root, build = sys.argv[1], sys.argv[2]
-K = os.path.join(root, 'src/modules/kokkos/src')
+K = os.path.join(root, 'src/modules/kokkos/src', 'circulation-solve')
 BODY, ENTRY, COMMON = (os.path.join(K, f) for f in ('circulation_body.hpp', 'circulation.cpp', 'circulation_common.hpp'))
 M = [  # name, file, old, new, expectation
  ('wrong regularization branch (LambOseen runs Vatistas)', BODY,

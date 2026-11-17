@@ -11,13 +11,13 @@ The OLAF direct Biot–Savart kernels `ui_seg` (vortex segments) and `ui_part_no
 | Where | What |
 |---|---|
 | `fork/modules/aerodyn/src/FVW_BiotSavart.f90` | The original file, edited in place: only the bodies of `ui_seg` and `ui_part_nograd` gain `#ifdef OPENFAST_KOKKOS` → `call ofk_…` / `#else` → the original body (+78 lines). Interface blocks and `use iso_c_binding` are local to each routine, so the module's public names are unchanged. |
-| `fork/modules/kokkos/src/biotsavart_direct_body.hpp` | **The physics, once**: `seg_term<Reg,T>` and `part_term<Reg,T>`, one target–source contribution each, templated on the regularization branch. Every shape and backend calls these. |
-| `fork/modules/kokkos/src/biotsavart_direct_impl.hpp` | Loop shapes (square with `kLanes` partial sums, skinny team reduction), SoA packing, per-mode dispatcher. |
-| `fork/modules/kokkos/src/biotsavart_direct_{strict,fast}.cpp` | The two translation units: 7 lines each, `#define OFK_BSD_MODE_NS strict|fast`, `#define OFK_BSD_STRICT 1|0`, `#include "biotsavart_direct_impl.hpp"`. Only the macros and the compile flags differ. |
-| `fork/modules/kokkos/src/biotsavart_direct.cpp` | `extern "C"` entry points, argument checks, host↔device views, `OFK_MODE` switch, profiling. No arithmetic on results. |
-| `fork/modules/kokkos/src/biotsavart_direct{,_common}.hpp` | C API; shared data types (constants, view types, argument structs). |
-| `fork/modules/kokkos/src/ofk_runtime.{hpp,cpp}` | Kokkos lifetime; `ofk::mode()` (reads `OFK_MODE` once, prints `[ofk] OFK_MODE=…` once); `ofk_set_mode` test hook. |
-| `fork/modules/kokkos/src/ofk_vector_libm.hpp` | Optional SIMD-clone `exp` (glibc libmvec) for fast host TUs. Off by default (measured slower). |
+| `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct_body.hpp` | **The physics, once**: `seg_term<Reg,T>` and `part_term<Reg,T>`, one target–source contribution each, templated on the regularization branch. Every shape and backend calls these. |
+| `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct_impl.hpp` | Loop shapes (square with `kLanes` partial sums, skinny team reduction), SoA packing, per-mode dispatcher. |
+| `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct_{strict,fast}.cpp` | The two translation units: 7 lines each, `#define OFK_BSD_MODE_NS strict|fast`, `#define OFK_BSD_STRICT 1|0`, `#include "biotsavart_direct_impl.hpp"`. Only the macros and the compile flags differ. |
+| `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct.cpp` | `extern "C"` entry points, argument checks, host↔device views, `OFK_MODE` switch, profiling. No arithmetic on results. |
+| `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct{,_common}.hpp` | C API; shared data types (constants, view types, argument structs). |
+| `src/modules/kokkos/src/common/ofk_runtime.{hpp,cpp}` | Kokkos lifetime; `ofk::mode()` (reads `OFK_MODE` once, prints `[ofk] OFK_MODE=…` once); `ofk_set_mode` test hook. |
+| `src/modules/kokkos/src/common/ofk_vector_libm.hpp` | Optional SIMD-clone `exp` (glibc libmvec) for fast host TUs. Off by default (measured slower). |
 | `fork/modules/kokkos/CMakeLists.txt` | `ofk_kernels`; per-TU FMA flags; `OFK_FAST_FMA`, `OFK_FAST_HOST_FLAGS`, `OFK_FAST_VECTOR_LIBM`; `kokkos_compilation(GLOBAL)` for CUDA; install/export. |
 | `fork/CMakeLists.txt`, `fork/modules/aerodyn/CMakeLists.txt` | `option(OPENFAST_KOKKOS OFF)`, `find_package(Kokkos 5.3...<6)`, `add_subdirectory(modules/kokkos)`; `aerodynlib` gets `OPENFAST_KOKKOS` and links `ofk_kernels`. |
 | `tests/biotsavart-direct/` | `CMakeLists.txt` (oracle from the pin, port from the fork), `l0_util.f90`, `l0_ui_seg.f90`, `l0_ui_part_nograd.f90`, `api_fvw_runtests.f90`, `perf_direct.f90`, `r7_threads.sh`, `cmp_outb.py`, `cpu.sbatch`, `gpu.sbatch`, `gpu2.sbatch`, `r6.sbatch`. |

@@ -33,7 +33,7 @@
 
 #include "biotsavart_direct_common.hpp"
 #include "biotsavart_direct_consts.hpp"
-#include "ofk_runtime.hpp"
+#include "common/ofk_runtime.hpp"
 
 namespace ofk_bsd {
 

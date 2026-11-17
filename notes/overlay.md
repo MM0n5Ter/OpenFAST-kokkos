@@ -8,7 +8,7 @@ The port is no longer a fork of OpenFAST. OpenFAST is built from the frozen pin 
 |---|---|
 | `deps/openfast` | The pin `12fa3fc`, frozen. Every file that is not in `src/` comes from here. Its `reg_tests/r-test` is initialized and used by ctest. |
 | `src/modules/<mod>/src/<file>` | **Full copies of only the files we change**, at OpenFAST's own relative paths. Today: `src/modules/aerodyn/src/FVW.f90`, `FVW_BiotSavart.f90`, `FVW_Subs.f90`. Ported bodies sit under `#ifdef OPENFAST_KOKKOS`; the `#else` branches are the pin's bodies. |
-| `src/modules/kokkos/` | `ofk_kernels`: `CMakeLists.txt` (stand-alone / test trees), `ofk_kernels.cmake` (the target; also `include()`d by the overlay), `src/*.{hpp,cpp}`. |
+| `src/modules/kokkos/` | `ofk_kernels`: `CMakeLists.txt` (stand-alone / test trees), `ofk_kernels.cmake` (the target; also `include()`d by the overlay), `src/common/` and `src/<unit>/` (one directory per unit; reorganized 2026-11-17, see `src/README.md`). |
 | `src/cmake/ofk_overlay.cmake` | The overlay, injected into OpenFAST's unmodified CMake with `-DCMAKE_PROJECT_INCLUDE=<repo>/src/cmake/ofk_overlay.cmake`. |
 | `src/cmake/ofk_options.cmake` | `OFK_FAST_FMA`, `OFK_FAST_HOST_FLAGS`, `OFK_FAST_VECTOR_LIBM`, defined once (overlay and `ofk_kernels` both include it). |
 | `src/cmake/ofk_sources.cmake` | For test trees: `ofk_port_sources()` (the port's copy of a file = `src/<path>` if overlaid, else the pin's) and `ofk_add_kernels()`. |

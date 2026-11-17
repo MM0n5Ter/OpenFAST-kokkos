@@ -14,7 +14,7 @@
 // contraction in every mode: class B.
 #pragma once
 
-#include "biotsavart_direct_common.hpp"
+#include "biotsavart-direct/biotsavart_direct_common.hpp"
 
 namespace ofk_iv {
 

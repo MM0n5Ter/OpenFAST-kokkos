@@ -19,7 +19,7 @@
 
 #include "biotsavart_direct_common.hpp"
 
-#include "ofk_vector_libm.hpp"
+#include "common/ofk_vector_libm.hpp"
 
 #if !defined(OFK_BSD_MODE_NS) || !defined(OFK_BSD_STRICT)
 #error "biotsavart_direct_body.hpp is included only from a mode TU that defines OFK_BSD_MODE_NS and OFK_BSD_STRICT"

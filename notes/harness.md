@@ -141,7 +141,7 @@ Each prints PASS/FAIL per check and writes a JSON summary, which goes into the u
 | `ref/toy_biotsavart.f90` | `deps/openfast/modules/aerodyn/src/FVW_BiotSavart.f90`, `FVW_VortexTools.f90`, and the induction drivers in `FVW_Subs.f90` |
 | `ref/toy_kinds.f90` (not renamed) | `NWTC_Library`, `FVW_Types` (not renamed) |
 | `src/toy_biotsavart.f90` (same interface, shim body) | The fork's versions of those files, with `#ifdef OPENFAST_KOKKOS` shims |
-| `src/toy_biotsavart_kokkos.cpp` | `modules/kokkos/src/fvw_induction.cpp` (direct kernels, then the treecode) |
-| `src/ofk_runtime.cpp` | `modules/kokkos/src/ofk_runtime.cpp` (shared by all units) |
+| `src/toy_biotsavart_kokkos.cpp` | `src/modules/kokkos/src/<unit>/` (one directory per unit: direct kernels, then the treecode) |
+| `src/ofk_runtime.cpp` | `modules/kokkos/src/common/ofk_runtime.cpp` (shared by all units) |
 | `src/toy_c_binding.f90` + `tests/capi_smoke.py` | `AeroDyn_Inflow_C_Binding.f90` + the `py_ad_*_OLAF` r-test cases |
 | `tests/l0_ui_part.f90` | `tests/fvw-induction/l0_ui_seg.f90`, `l0_ui_part.f90`, `l0_tree.f90`, plus replay of captured `InducedVelocitiesAll_Calc` calls |

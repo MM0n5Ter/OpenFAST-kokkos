@@ -10,7 +10,7 @@ The OLAF particle treecode (`VelocityMethod(1) = 2`, OLAF's default wake path): 
 
 **Done.** Every gate in scope passes on CPU and on the A100 (MIG); the GPU timing sweeps with the device build are queued (P1/P3/P5 on full GPUs). The segment tree (VelocityMethod 4) is deferred (below).
 
-- **Code** (overlay layout, `src/`): the strict and fast tree from the 2026-11-14 checkpoint, plus the **fast-mode device build** (`src/modules/kokkos/src/treecode_dbuild.hpp`, level-synchronous K1-K5, no sort library, no atomics). Selection (`OFK_TC_DEVBUILD`): `auto` (default) = device backends, fast mode, n >= `OFK_TC_DEVBUILD_MIN` (4096); `1` = always, also on host backends (to test the algorithm on the CPU); `0` = never (host build, uploaded). Strict always builds on the host. `OFK_TC_DEVBUILD_CHECK=1` runs the host fast build as well and requires the same topology bit for bit.
+- **Code** (overlay layout, `src/`): the strict and fast tree from the 2026-11-14 checkpoint, plus the **fast-mode device build** (`src/modules/kokkos/src/treecode/treecode_dbuild.hpp`, level-synchronous K1-K5, no sort library, no atomics). Selection (`OFK_TC_DEVBUILD`): `auto` (default) = device backends, fast mode, n >= `OFK_TC_DEVBUILD_MIN` (4096); `1` = always, also on host backends (to test the algorithm on the CPU); `0` = never (host build, uploaded). Strict always builds on the host. `OFK_TC_DEVBUILD_CHECK=1` runs the host fast build as well and requires the same topology bit for bit.
 - **Host backends are unchanged** by the device build (same code path in `tree_build`/`flat_tree` unless `OFK_TC_DEVBUILD=1`). So the CPU system results measured with `ov-fomp` (built before the device build) hold for the final source; `ov3-fomp` (final source) gives bit-identical bar-r8-tree outputs in fast and strict (job 1887985).
 - **Trees** (`opt/build/`): test trees `u3d-omp`, `u3d-iv-omp`, `u3d-cuda-a100`, `u3d-iv-cuda-a100`, `u3d-cuda-h100`; OpenFAST `ov3-cuda-a100`, `ov3-fomp`, `ov3-sp-omp` (single precision, aerodyn_driver only). Frozen timing binaries: `u3d-frozen-cuda-{a100,h100}/perf_tc`. The old `u3-*` and `fork3-*` trees were built from `fork/` and are superseded (u3-cuda-a100/h100 are still held by queued jobs 1875922/1862732).
 - **Open** (none blocks the gates):
@@ -36,11 +36,11 @@ The OLAF particle treecode (`VelocityMethod(1) = 2`, OLAF's default wake path): 
 ### Files (this unit; uncommitted)
 | File | What |
 |---|---|
-| `src/modules/kokkos/src/treecode_common.hpp` | flat-tree types, build fragments, `TreeConsts`, `EvalArgs`, `DevBuild` (device build buffers) |
-| `src/modules/kokkos/src/treecode_impl.hpp` | host build (Fortran-faithful, parallel subtrees), multipole, stackless traversal; includes the device build in the fast TU |
-| `src/modules/kokkos/src/treecode_dbuild.hpp` | **new 2026-11-15**: the fast-mode device build (`build_device`, `write_device`) |
-| `src/modules/kokkos/src/treecode_{strict,fast}.cpp` | the two mode TUs |
-| `src/modules/kokkos/src/induced_velocities.{cpp,hpp}` | unit 2's handle: tree state, `tree_build` (host or device build), `flat_tree`, C API `ofk_iv_tree_build`, `ofk_iv_eval_tree`, `ofk_tc_enabled`; `OFK_TC`, `OFK_TC_DEVBUILD[_MIN,_CHECK]` |
+| `src/modules/kokkos/src/treecode/treecode_common.hpp` | flat-tree types, build fragments, `TreeConsts`, `EvalArgs`, `DevBuild` (device build buffers) |
+| `src/modules/kokkos/src/treecode/treecode_impl.hpp` | host build (Fortran-faithful, parallel subtrees), multipole, stackless traversal; includes the device build in the fast TU |
+| `src/modules/kokkos/src/treecode/treecode_dbuild.hpp` | **new 2026-11-15**: the fast-mode device build (`build_device`, `write_device`) |
+| `src/modules/kokkos/src/treecode/treecode_{strict,fast}.cpp` | the two mode TUs |
+| `src/modules/kokkos/src/induced-velocities/induced_velocities.{cpp,hpp}` | unit 2's handle: tree state, `tree_build` (host or device build), `flat_tree`, C API `ofk_iv_tree_build`, `ofk_iv_eval_tree`, `ofk_tc_enabled`; `OFK_TC`, `OFK_TC_DEVBUILD[_MIN,_CHECK]` |
 | `src/modules/kokkos/{CMakeLists.txt,ofk_kernels.cmake}` | `treecode_strict.cpp` strict, `treecode_fast.cpp` fast |
 | `src/modules/aerodyn/src/FVW_Subs.f90` | shims (+80 lines under `#ifdef OPENFAST_KOKKOS`), see Contract |
 | `tests/treecode/*` | `CMakeLists.txt` (+ `l0_tc_devbuild[_seed7]`, `l0_tc_r7_devbuild`), `tc_api.f90`, `l0_tc.f90` (kinds 6/7 tightened, see audit 13), `perf_tc.f90`, `r7_threads.sh`, `make_cases.sh`, `build_u3.sh` (`U3=` prefix), `cpu.sbatch` (overlay paths), `gpu.sbatch` (`U3=`/`OV=` trees, device-build runs, P6 bytes > 0), `mutate.py` (new), this card |

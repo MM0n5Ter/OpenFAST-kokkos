@@ -1,4 +1,4 @@
-!> Fortran view of the unit-treecode C API (fork/modules/kokkos/src/induced_velocities.hpp) for the
+!> Fortran view of the unit-treecode C API (src/modules/kokkos/src/induced-velocities/induced_velocities.hpp) for the
 !! L0 and performance drivers: the same calls the FVW_Subs shims make (ofk_tc_grow / ofk_tc_ui),
 !! with an explicit key (any object's address; the shims use m%Sgmt).
 module tc_api

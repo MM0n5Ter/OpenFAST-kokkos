@@ -41,11 +41,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "biotsavart_direct_common.hpp"
-#include "biotsavart_direct_consts.hpp"
+#include "biotsavart-direct/biotsavart_direct_common.hpp"
+#include "biotsavart-direct/biotsavart_direct_consts.hpp"
 #include "induced_velocities_common.hpp"
-#include "ofk_runtime.hpp"
-#include "treecode_common.hpp"
+#include "common/ofk_runtime.hpp"
+#include "treecode/treecode_common.hpp"
 
 namespace ofk_iv {
 

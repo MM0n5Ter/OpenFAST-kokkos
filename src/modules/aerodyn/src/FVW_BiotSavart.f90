@@ -151,7 +151,7 @@ subroutine ui_seg(iCPStart, iCPEnd, CPs, &
    real(ReKi), dimension(:,:)    , intent(inout) :: Uind_out    !< Induced velocity vector - Side effects!!! (3 x nCPs++)
 #ifdef OPENFAST_KOKKOS
    ! OpenFAST-kokkos unit biotsavart-direct: the body runs in C++/Kokkos
-   ! (modules/kokkos/src/biotsavart_direct*.cpp). OFK_MODE=strict|fast picks the arithmetic.
+   ! (modules/kokkos/src/biotsavart-direct/biotsavart_direct*.cpp). OFK_MODE=strict|fast picks the arithmetic.
    interface ofk_ui_seg
       subroutine ofk_ui_seg_r8(iCPStart, iCPEnd, ldCP, CPs, iSegStart, iSegEnd, ldPts, nPts, SegPoints, &
             ldConnct, SegConnct, SegGamma, RegFunction, RegParam, ldU, Uind) bind(C, name='ofk_biotsavart_direct_ui_seg_r8')
@@ -410,7 +410,7 @@ subroutine ui_part_nograd(nCPS, CPs, nPart, Part, Alpha, RegFunction, RegParam, 
    real(ReKi), dimension(:),     intent(in)    :: RegParam    !< Regularization parameter (nPart+)
 #ifdef OPENFAST_KOKKOS
    ! OpenFAST-kokkos unit biotsavart-direct: the body runs in C++/Kokkos
-   ! (modules/kokkos/src/biotsavart_direct*.cpp). MINNORM is passed because it is a default-kind
+   ! (modules/kokkos/src/biotsavart-direct/biotsavart_direct*.cpp). MINNORM is passed because it is a default-kind
    ! literal whose value depends on the compiler flags (-fdefault-real-8 or not).
    interface ofk_ui_part_nograd
       subroutine ofk_ui_part_nograd_r8(nCPs, ldCP, CPs, nPart, ldP, Part, ldA, Alpha, RegFunction, RegParam, &

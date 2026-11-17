@@ -5,21 +5,19 @@
 # stand-alone / from a test tree with add_subdirectory():
 #   cmake -S modules/kokkos -B <build> -DKokkos_ROOT=<install> [-DCMAKE_CXX_COMPILER=<install>/bin/nvcc_wrapper]
 #
-# Units in this library (each: <unit>_body.hpp = the physics, compiled twice):
-#   biotsavart-direct  FVW_BiotSavart::ui_seg, ::ui_part_nograd
-#     src/biotsavart_direct.cpp         entry points, views, OFK_MODE switch
-#     src/biotsavart_direct_strict.cpp  strict mode: Fortran order, FMA off
-#     src/biotsavart_direct_fast.cpp    fast mode: blocked order, FMA on
-#   induced-velocities FVW_Subs::InducedVelocitiesAll_*, ::LiftingLineInducedVelocities (direct methods)
-#     src/induced_velocities.cpp        per-instance handles, lattice mirror, sources, evaluation
-#     src/induced_velocities_pack.cpp   device packing lattice -> segments -> particles (F1, class B)
-#   treecode           FVW_VortexTools::grow_tree_part, ::ui_tree_part (VelocityMethod 2), through
-#                      the induced-velocities handle (induced_velocities.cpp)
-#     src/treecode_strict.cpp           strict mode: the Fortran tree bit for bit, FMA off
-#     src/treecode_fast.cpp             fast mode: same tree, FMA on, vectorized leaves (class R2)
-#   circulation-solve  FVW_Wings::Wings_ComputeCirculationPolarData, the Vvar block (F10-B, host space)
-#     src/circulation.cpp               per-instance handles, C API, variant/threshold selection
-#     src/circulation_{strict,fast,fastfma}.cpp  one body (circulation_body.hpp), three flag sets
+# Layout: src/<unit>/ per ported unit (same name as tests/<unit>/), src/common/ for what every unit
+# shares. The include root is src/, so a cross-unit include names its directory
+# ("biotsavart-direct/biotsavart_direct_body.hpp"); same-directory includes stay bare.
+#   src/common/              ofk_runtime.{hpp,cpp}: Kokkos lifetime, OFK_MODE; ofk_vector_libm.hpp
+#   src/biotsavart-direct/   FVW_BiotSavart::ui_seg, ::ui_part_nograd. The direct Biot-Savart kernels,
+#                            also used by induced-velocities and treecode.
+#                            biotsavart_direct.cpp (entry points), _strict.cpp / _fast.cpp (one body, two flag sets)
+#   src/induced-velocities/  FVW_Subs::InducedVelocitiesAll_*, ::LiftingLineInducedVelocities: per-instance
+#                            handles, lattice mirror, sources, evaluation; _pack.cpp = device packing (class B)
+#   src/treecode/            FVW_VortexTools::grow_tree_part, ::ui_tree_part, through the induced-velocities
+#                            handle; treecode_{strict,fast}.cpp, treecode_dbuild.hpp (device tree build)
+#   src/circulation-solve/   FVW_Wings::Wings_ComputeCirculationPolarData, the Vvar block (host space):
+#                            circulation.cpp (handles, C API), circulation_{strict,fast,fastfma}.cpp
 # The target itself is defined in ofk_kernels.cmake, so that the overlay can include() it from a
 # deferred call at the end of OpenFAST's top-level directory, where add_subdirectory() is not
 # allowed ("Subdirectories may not be created during deferred execution").

@@ -5,7 +5,7 @@
 import os, subprocess, sys, re
 root, build = sys.argv[1], sys.argv[2]
 K = os.path.join(root, 'src/modules/kokkos/src')
-IMPL, IV, DB = (os.path.join(K, f) for f in ('treecode_impl.hpp', 'induced_velocities.cpp', 'treecode_dbuild.hpp'))
+IMPL, IV, DB = (os.path.join(K, f) for f in ('treecode/treecode_impl.hpp', 'induced-velocities/induced_velocities.cpp', 'treecode/treecode_dbuild.hpp'))
 M = [  # name, file, old, new, env, expectation
  ('octant > -> >= (host build)', IMPL, "(px(i) > G[0] ? 1 : 0)", "(px(i) >= G[0] ? 1 : 0)", {}, 'claim 1 fails'),
  ('powi r^5 = r^4*r', IMPL, "const T r5 = r2 * r3;", "const T r5 = r4 * r;", {}, 'claim 1 fails'),

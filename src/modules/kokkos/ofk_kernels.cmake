@@ -23,18 +23,18 @@ endif()
 include(${_ofk_dir}/../../cmake/ofk_options.cmake)
 separate_arguments(_ofk_fast_host_flags UNIX_COMMAND "${OFK_FAST_HOST_FLAGS}")
 add_library(ofk_kernels STATIC
-  ${_ofk_dir}/src/ofk_runtime.cpp
-  ${_ofk_dir}/src/biotsavart_direct.cpp
-  ${_ofk_dir}/src/biotsavart_direct_strict.cpp
-  ${_ofk_dir}/src/biotsavart_direct_fast.cpp
-  ${_ofk_dir}/src/induced_velocities.cpp
-  ${_ofk_dir}/src/induced_velocities_pack.cpp
-  ${_ofk_dir}/src/treecode_strict.cpp
-  ${_ofk_dir}/src/treecode_fast.cpp
-  ${_ofk_dir}/src/circulation.cpp
-  ${_ofk_dir}/src/circulation_strict.cpp
-  ${_ofk_dir}/src/circulation_fast.cpp
-  ${_ofk_dir}/src/circulation_fastfma.cpp)
+  ${_ofk_dir}/src/common/ofk_runtime.cpp
+  ${_ofk_dir}/src/biotsavart-direct/biotsavart_direct.cpp
+  ${_ofk_dir}/src/biotsavart-direct/biotsavart_direct_strict.cpp
+  ${_ofk_dir}/src/biotsavart-direct/biotsavart_direct_fast.cpp
+  ${_ofk_dir}/src/induced-velocities/induced_velocities.cpp
+  ${_ofk_dir}/src/induced-velocities/induced_velocities_pack.cpp
+  ${_ofk_dir}/src/treecode/treecode_strict.cpp
+  ${_ofk_dir}/src/treecode/treecode_fast.cpp
+  ${_ofk_dir}/src/circulation-solve/circulation.cpp
+  ${_ofk_dir}/src/circulation-solve/circulation_strict.cpp
+  ${_ofk_dir}/src/circulation-solve/circulation_fast.cpp
+  ${_ofk_dir}/src/circulation-solve/circulation_fastfma.cpp)
 target_include_directories(ofk_kernels PUBLIC $<BUILD_INTERFACE:${_ofk_dir}/src>)
 target_link_libraries(ofk_kernels PUBLIC Kokkos::kokkos)
 set_target_properties(ofk_kernels PROPERTIES
@@ -53,8 +53,8 @@ target_compile_options(ofk_kernels PRIVATE
 # Every TU with device arithmetic must be in one of these two lists: nvcc contracts by default
 # (--fmad=true), so a TU in neither list would silently get FMA in device code. The pack TU of
 # induced-velocities is class B in both modes, hence "strict".
-set(OFK_STRICT_SOURCES ${_ofk_dir}/src/biotsavart_direct_strict.cpp ${_ofk_dir}/src/induced_velocities_pack.cpp ${_ofk_dir}/src/treecode_strict.cpp)
-set(OFK_FAST_SOURCES ${_ofk_dir}/src/biotsavart_direct_fast.cpp ${_ofk_dir}/src/treecode_fast.cpp)
+set(OFK_STRICT_SOURCES ${_ofk_dir}/src/biotsavart-direct/biotsavart_direct_strict.cpp ${_ofk_dir}/src/induced-velocities/induced_velocities_pack.cpp ${_ofk_dir}/src/treecode/treecode_strict.cpp)
+set(OFK_FAST_SOURCES ${_ofk_dir}/src/biotsavart-direct/biotsavart_direct_fast.cpp ${_ofk_dir}/src/treecode/treecode_fast.cpp)
 set(_ofk_strict_opts -ffp-contract=off)
 if(OFK_FAST_FMA)
   set(_ofk_fast_opts -ffp-contract=fast ${_ofk_fast_host_flags})
@@ -86,9 +86,9 @@ if(OFK_KOKKOS_CUDA)
   list(APPEND _ofk_cs_f0_opts --fmad=false)
   list(APPEND _ofk_cs_f1_opts --fmad=true)
 endif()
-set_source_files_properties(${_ofk_dir}/src/circulation_strict.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_strict_opts}")
-set_source_files_properties(${_ofk_dir}/src/circulation_fast.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f0_opts}")
-set_source_files_properties(${_ofk_dir}/src/circulation_fastfma.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f1_opts}")
+set_source_files_properties(${_ofk_dir}/src/circulation-solve/circulation_strict.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_strict_opts}")
+set_source_files_properties(${_ofk_dir}/src/circulation-solve/circulation_fast.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f0_opts}")
+set_source_files_properties(${_ofk_dir}/src/circulation-solve/circulation_fastfma.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f1_opts}")
 message(STATUS "ofk_kernels: Kokkos ${Kokkos_VERSION} (CUDA=${OFK_KOKKOS_CUDA}); "
                "strict TUs: ${_ofk_strict_opts}; fast TUs: ${_ofk_fast_opts}")
 

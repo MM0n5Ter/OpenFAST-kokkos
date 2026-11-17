@@ -33,12 +33,12 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`. Process, gate order and
    - Check L0 sensitivity by mutation: break each guard or constant by hand, and confirm L0 fails.
    - To link the pin's NWTC library: `module load openblas/0.3.28`, `-DBLA_VENDOR=OpenBLAS`. Worked example: `tests/biotsavart-direct/`.
 3. **Kernel.** Follow `notes/architecture.md` §2–3:
-   - Put the shared body in `src/modules/kokkos/src/<unit>_body.hpp`, and instantiate it in `<unit>_strict.cpp` (FMA off) and `<unit>_fast.cpp` (FMA on).
+   - Put the shared body in `src/modules/kokkos/src/<unit>/<unit>_body.hpp` (one directory per unit, named like `tests/<unit>/`; shared code in `common/`), and instantiate it in `<unit>_strict.cpp` (FMA off) and `<unit>_fast.cpp` (FMA on).
    - Select the mode at runtime with `OFK_MODE`. Strict must be class B against the Fortran on the CPU; fast must reach the declared class against strict.
    - Wrap the body in a mode namespace (ODR, architecture.md §3). Follow the CPU vectorization recipe there, and check it with `-fopt-info-vec`.
    - Measure the Fortran's own FMA spread (`l0_*_ffma`) before declaring the fast-mode bound.
    - An FMA variant must earn its place end to end: if the gain shows only in the kernel, or any L0 case exceeds the per-case claim-3 limit, keep the FMA-free variant as default (decision #15). Keep every case that exceeds a limit as a fixed, reproducible L0 case, and call an explanation plausible until it is shown.
-   - Template: `src/modules/kokkos/src/biotsavart_direct_*` and `tests/biotsavart-direct/`.
+   - Template: `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct_*` and `tests/biotsavart-direct/`.
    - Both modes must be deterministic.
 
    Also:

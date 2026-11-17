@@ -17,7 +17,7 @@
 //    (fixed order, independent of the thread count) so they vectorize.
 #pragma once
 
-#include "biotsavart_direct_body.hpp"
+#include "biotsavart-direct/biotsavart_direct_body.hpp"
 #include "treecode_common.hpp"
 
 #include <cmath>

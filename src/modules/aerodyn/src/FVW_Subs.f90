@@ -65,10 +65,10 @@ module FVW_SUBS
 #ifdef OPENFAST_KOKKOS
    ! OpenFAST-kokkos unit induced-velocities: the direct-method paths (VelocityMethod 1 and 3) of
    ! InducedVelocitiesAll_Init/Calc and LiftingLineInducedVelocities run in C++/Kokkos
-   ! (modules/kokkos/src/induced_velocities*.{hpp,cpp}). Device state lives in a per-instance
+   ! (modules/kokkos/src/induced-velocities/induced_velocities*.{hpp,cpp}). Device state lives in a per-instance
    ! handle keyed by the address of the instance's T_Sgmt (m%Sgmt); no registry type is changed.
    ! Unit treecode: the particle treecode (VelocityMethod 2: grow_tree_part + ui_tree_part) runs
-   ! in the same handle (modules/kokkos/src/treecode_*); the Fortran T_Tree is then not grown
+   ! in the same handle (modules/kokkos/src/treecode/treecode_*); the Fortran T_Tree is then not grown
    ! (every in-tree caller's Tree is a local passed only to Init/Calc/End). OFK_TC=fortran keeps
    ! the Fortran treecode. Everything below is private to this module.
    integer(c_int), parameter :: OFK_RK = int(storage_size(1.0_ReKi)/8, c_int)  ! bytes of ReKi

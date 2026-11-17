@@ -7,7 +7,7 @@ A toy with the same shape as an OLAF unit: a cut-down `ui_part_nograd` (vortex-p
 | `ref/toy_kinds.f90` | Shared kinds, never renamed | `NWTC_Library` |
 | `ref/toy_biotsavart.f90` | **Frozen** Fortran: the oracle | a file in `deps/openfast` |
 | `src/toy_biotsavart.f90` | Port: **same module name and interface**, body forwards through `bind(C)` | the fork's version of the file |
-| `src/toy_biotsavart_kokkos.cpp` | `extern "C"` Kokkos kernel | `modules/kokkos/src/<unit>.cpp` |
+| `src/toy_biotsavart_kokkos.cpp` | `extern "C"` Kokkos kernel | `src/modules/kokkos/src/<unit>/<unit>.cpp` |
 | `src/ofk_runtime.{hpp,cpp}` | Lazy `Kokkos::initialize`, `finalize` at exit | shared by all units |
 | `src/toy_c_binding.f90` | `bind(C)` entry in a **shared** library | `AeroDyn_Inflow_C_Binding.f90` |
 | `rename_modules.py` | Renames the frozen file's modules to `*_ref` for the oracle | reused as is |

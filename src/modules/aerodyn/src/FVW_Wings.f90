@@ -17,7 +17,7 @@ module FVW_Wings
 #ifdef OPENFAST_KOKKOS
    ! OpenFAST-kokkos unit circulation-solve (OLAF unit 4a, F10-B): the Vvar block of the circulation
    ! iteration in Wings_ComputeCirculationPolarData runs in C++/Kokkos, in the host execution space
-   ! (modules/kokkos/src/circulation*.{hpp,cpp}). The Gamma-independent geometry of ui_seg_11 is built
+   ! (modules/kokkos/src/circulation-solve/circulation*.{hpp,cpp}). The Gamma-independent geometry of ui_seg_11 is built
    ! once per call; each iteration replays only its Gamma statement, in the pin's order (class B).
    ! The cache lives in a per-instance handle keyed by the address of m%Sgmt and is rebuilt on every
    ! call. OFK_CS=fortran keeps the Fortran loop. Everything below is private to this module.

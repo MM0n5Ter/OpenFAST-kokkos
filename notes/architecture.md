@@ -12,7 +12,7 @@ It does not have to be perfect after those three, but it must already carry ever
 |---|---|
 | `deps/openfast` | Upstream pin `12fa3fc`, the frozen baseline and oracle. **Never edited.** |
 | `src/modules/<mod>/src/*.f90` | Full copies of only the OpenFAST files we change, at their own paths. The module name and public interface stay. Ported bodies become `#ifdef OPENFAST_KOKKOS` shims, and the pin's body stays in `#else`. |
-| `src/modules/kokkos/` | `ofk_kernels`: the one C++/Kokkos library for all ported units, so the process has one Kokkos runtime. |
+| `src/modules/kokkos/` | `ofk_kernels`: the one C++/Kokkos library for all ported units, so the process has one Kokkos runtime. Sources in `src/<unit>/` (one directory per unit, named like `tests/<unit>/`) and `src/common/`; map in `src/README.md`. |
 | `src/cmake/ofk_overlay.cmake` | Swaps `src/<path>` for `deps/openfast/<path>` in every target of the pin's unmodified CMake (`-DCMAKE_PROJECT_INCLUDE`). With `-DOPENFAST_KOKKOS=ON` it also adds `ofk_kernels`. See `notes/overlay.md`. The fork it replaced (`fork/`) is retired. |
 | `tests/<unit>/` (this repo) | Unit card and L0 tests. The oracle is built from `deps/openfast` with `_ref` renaming, and the port from `src/` where overlaid. |
 
@@ -49,7 +49,7 @@ Build facts from unit 1, which still hold:
   - no API change;
   - the mode is printed once in the log.
 - **Build:** FMA is a per-translation-unit flag, so each unit compiles its body header twice: `<unit>_strict.cpp` (contraction off) and `<unit>_fast.cpp` (contraction on). Both include the same `<unit>_body.hpp`. It is one source, instantiated twice.
-- **ODR rule:** each mode's translation unit wraps the body and the loop shapes in a mode-specific namespace (`ofk_<unit>::strict` / `::fast`; the template is `src/modules/kokkos/src/biotsavart_direct_body.hpp`).
+- **ODR rule:** each mode's translation unit wraps the body and the loop shapes in a mode-specific namespace (`ofk_<unit>::strict` / `::fast`; the template is `src/modules/kokkos/src/biotsavart-direct/biotsavart_direct_body.hpp`).
   - Without it, the linker merges the inline instantiations, and one mode silently runs the other's arithmetic.
   - A per-TU `-march` has the same hazard. *(Unit 1 lesson.)*
 - **FMA can move ill-conditioned formulas far more than reordering does.** The segment cross product `ya*zb - za*yb` cancels for targets near the segment line. There, FMA alone moves `ui_seg` by up to 1.1e-11 relative to Σ|c|, and the pin's own Fortran built with FMA moves by the same amount. Fast mode keeps FMA (user decision, 2026-11-14), and the bound for such formulas is set by the measured `l0_*_ffma` spread (see §4). *(Unit 1 lesson.)*

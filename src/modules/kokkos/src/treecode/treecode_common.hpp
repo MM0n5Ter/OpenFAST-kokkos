@@ -16,7 +16,7 @@
 // The leaf sources are packed per node in preorder, as compact_tree_part packs Tree%LeafBuf.
 #pragma once
 
-#include "biotsavart_direct_common.hpp"
+#include "biotsavart-direct/biotsavart_direct_common.hpp"
 
 #include <vector>
 
