@@ -2,6 +2,9 @@
 
 These are working notes. Numbers were measured on `deps/openfast` at `12fa3fc` with the scripts in `../scripts/`, unless a line is marked *(v5.0.0)* or *(verify)*.
 
+- [process.md](process.md): **the porting process end to end**: roles (user, orchestrator, phase agents), plan, brief, translate, verify (gate order), record, cost control
+- [runs.md](runs.md): **run statistics**: per-unit outcomes, cost in USD (API-equivalent) and time, where the cost goes, compute and queues
+- [agent-briefs/](agent-briefs/): every brief given to a phase agent, verbatim, and the template for new ones
 - [decisions.md](decisions.md): the story, design decisions and open TODOs
 - [landscape.md](landscape.md): related work, including GPU work on OpenFAST/OLAF, and where we fit
 - [openfast-structure.md](openfast-structure.md): module sizes, dependency graph, the framework API, inside AeroDyn, and OLAF's entry points down to the hot kernels

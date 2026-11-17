@@ -7,7 +7,7 @@ description: Port one OpenFAST Fortran unit (an API contract such as ui_seg, Ind
 
 Template to copy: `examples/fortran-kokkos/`. It is verified on Kokkos 5.3.0 OpenMP: L0 206/206 bitwise, `capi_smoke` OK. On the H100: worst relative error 2.3e-18.
 The rules at the Fortran↔C++ boundary are in `notes/build-kokkos-fortran.md` §6. Follow them all.
-Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
+Gates: `notes/criteria.md`. Harness: `notes/harness.md`. Process, gate order and cost rules: `notes/process.md`.
 
 ## Inputs you need before writing code
 - The unit's placement note (`notes/<module>-placement.md`). If it is missing, run the `ofk-analyze-unit` skill first.
