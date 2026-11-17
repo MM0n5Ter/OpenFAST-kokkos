@@ -105,6 +105,14 @@ Gates: `notes/criteria.md`. Harness: `notes/harness.md`.
   - Slurm stores a copy of the batch script at submission, so editing it under a *queued* job is safe; helper scripts the job calls at runtime (`run_case.sh`, `r8.py`) are not.
   - When queued jobs hold your build trees, build the new code into prefixed trees (`U3=u3d tests/treecode/build_u3.sh …`, `ov3-*`) and point job scripts at them through environment variables, not by editing paths.
 
+- **Unit 4a lessons (host-space kernels, iterative solvers, counting without editing the oracle):**
+  - To read a value the Fortran never outputs (e.g. an iteration count) **without editing the oracle**: in L0, wrap a cross-file call with `-Wl,--wrap=__<module>_MOD_<proc>` and a C forwarder (`tests/circulation-solve/afi_count.c`); for whole OpenFAST binaries (no gdb/perf here), `tests/circulation-solve/itertrace.c` puts ptrace breakpoints on a function entry and a call site (`nm`/`objdump` addresses, non-PIE). Check that traced outputs equal untraced ones.
+  - Run **ref vs ref per L0 case**: the pin itself reads uninitialised memory in some corners (a wing with no control point). Gate those cases only on the outputs the pin reproduces, and say so.
+  - The r-test set has degenerate cases (`ad_Sphere_OLAF`: no lifting line at all). A shim that rejects empty extents aborts there. Accept zero sizes, or keep the pin's empty loop, and add the case to L0.
+  - Under nvcc, `KOKKOS_FORCEINLINE_FUNCTION` makes a helper `__host__ __device__`, and namespace-scope `constexpr` tables become "undefined in device code". For host-space-only code use a plain `inline __attribute__((always_inline))`, which is what the macro expands to under g++ (same object code, checked with `objdump`).
+  - A replayed cache can be **memory-bound**. Recomputing cheap terms (a cross product) by the same expressions from the same inputs gives the same bits and halves the traffic. Check `-fopt-info-vec`: a 4-iteration `omp simd` loop of doubles got 16-byte vectors, while 8 iterations gave 32-byte ones.
+  - The login node can be at load 20+ on 4 cores. Parallel timings there are meaningless: time on `med`.
+
 ## Never
 - Edit `deps/openfast`.
 - Edit a caller to make a port fit (that fails A2).

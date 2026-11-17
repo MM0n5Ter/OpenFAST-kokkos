@@ -17,6 +17,9 @@
 #                      the induced-velocities handle (induced_velocities.cpp)
 #     src/treecode_strict.cpp           strict mode: the Fortran tree bit for bit, FMA off
 #     src/treecode_fast.cpp             fast mode: same tree, FMA on, vectorized leaves (class R2)
+#   circulation-solve  FVW_Wings::Wings_ComputeCirculationPolarData, the Vvar block (F10-B, host space)
+#     src/circulation.cpp               per-instance handles, C API, variant/threshold selection
+#     src/circulation_{strict,fast,fastfma}.cpp  one body (circulation_body.hpp), three flag sets
 # The target itself is defined in ofk_kernels.cmake, so that the overlay can include() it from a
 # deferred call at the end of OpenFAST's top-level directory, where add_subdirectory() is not
 # allowed ("Subdirectories may not be created during deferred execution").

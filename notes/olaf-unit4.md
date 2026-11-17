@@ -50,7 +50,7 @@ The wake time-stepping that phase-2 residency would move to the device (CCSD mea
 
 **Hardest gates:**
 - 4a:
-  - **claim 1 / R8 must stay bitwise, including iteration counts**. One flipped convergence test moves Γ by up to `ConvCrit`·|Γ|. So fast mode = strict mode for this kernel (no FMA), which is a declared exception to architecture.md §3;
+  - **claim 1 / R8 must stay bitwise, including iteration counts**. One flipped convergence test moves Γ by up to `ConvCrit`·|Γ|. So fast mode = strict mode for this kernel (no FMA), which is a declared exception to architecture.md §3. *(Corrected by the port's FMA experiment, §3.4: with FMA no iteration count changed on BAR, r-test or random L0 inputs, and the pin built with FMA flips the same knife-edge cases; the rule fixed in advance picked the FMA variant. Strict and the FMA-free variant are bitwise, including iteration counts.)*
   - **P4**: 87 targets per iteration, so the serial fallback below `N_min` must be measured;
   - **P6**: an O(nCP²) cache that must live in a handle.
 - 4b: **A2/A4 across AeroDyn and InflowWind** (a 7.8k-line `AeroDyn.f90` overlay copy and another lane's module), and the **proof obligation that each skipped slice is never read** (H2–H4, card audit W2–W4).
@@ -178,7 +178,7 @@ FVW_UpdateStates (FVW.f90:567)
 - convergence-flip amplification;
 - ring corner order;
 - `Eps_NW` row 1 for all four segments: not unit 2's segment pack;
-- FMA must stay off in both modes.
+- FMA must stay off in both modes. *(Corrected, §3.4: off in strict; the measured fast mode keeps it.)*
 
 ### 2.2 Wind and tower at the OLAF wind points (4b)
 
@@ -246,7 +246,7 @@ AD_CalcOutput (AeroDyn.f90:2329)
 ## 3. Recommended unit-4 boundary
 
 ### 3.1 Split
-- **4a `circulation-solve`** (OLAF, `FVW_Wings.f90` overlaid; `ofk_kernels` gains `circulation_{strict,fast}.cpp`, both without FMA).
+- **4a `circulation-solve`** (OLAF, `FVW_Wings.f90` overlaid; `ofk_kernels` gains `circulation_{strict,fast}.cpp`, both without FMA). *(As built: `circulation_{strict,fast,fastfma}.cpp`; the fast mode's FMA variant was chosen by measurement, §3.4.)*
   - Shim only the `Vvar` block of `Wings_ComputeCirculationPolarData` (`FVW_Wings.f90:422-447`): `ofk_cs_build` once before the `do while`, `ofk_cs_vvar` per iteration. Everything else in the routine stays Fortran.
   - `ui_quad_n1` stays as it is.
   - Gates: claim 1 (bitwise, including per-solve iteration counts), R6, R7, R8 (bitwise, so drift 0), P2, P4 (serial fallback), P6, A1/A2/A5, A7 (stateless: the test still runs).
@@ -279,10 +279,41 @@ Assumptions:
 - These are projections, not measurements. The port must measure P2 and P3.
 
 ### 3.3 Hardest gates
-1. **4a claim 1 with iteration counts (C4).** Bitwise for the whole solve, in *both* modes. FMA anywhere in the cache changes Γ by ulps, which can change the iteration count and then Γ by up to 1e-3 relative. That is a declared exception: fast = strict here. The cost is nil, because the kernel is tiny.
+1. **4a claim 1 with iteration counts (C4).** Bitwise for the whole solve, in *both* modes. FMA anywhere in the cache changes Γ by ulps, which can change the iteration count and then Γ by up to 1e-3 relative. That is a declared exception: fast = strict here. The cost is nil, because the kernel is tiny. *(Measured otherwise, §3.4.)*
 2. **4a P4 / `N_min`.** About 26 launches per solve at 87 targets. The threaded launch latency must beat 0.164 ms of serial replay, or the solve falls back to serial. Measure on the r-test OLAF cases, the smallest of which have a few spanwise stations.
 3. **4b A2/A4 and the deadness proofs.** Each of H2–H4 is legal only because no reader exists. The tests must enumerate the readers (card W2–W4) and include the glue with corrections, grid outputs on and off, and source panels.
 4. A7 is trivially satisfied for unit 4 (no persistent state). **It is the gate that will decide the residency unit** (§2.3).
+
+### 3.4 FMA experiment (unit 4a port, 2026-11-17)
+
+§0 and §3.3 argued that 4a's fast mode must be FMA-free: a ulp change could flip a per-solve convergence test and move Γ by up to `ConvCrit`·|Γ|. The port measured it instead of assuming it (`tests/circulation-solve/unit.md`, "FMA experiment"). Same source, same binary, selected at run time:
+- **F0**: fast mode without contraction (`OFK_CS_FMA=0`);
+- **F1**: fast mode with contraction and `-march=x86-64-v3` (`OFK_CS_FMA=1`);
+- **natural envelope**: the pin built with FMA (`openfast-pin-ffma`, `-march=x86-64-v3`, OPENMP=OFF) against the pin (`openfast-pin-fomp` at 1 thread = base₁).
+
+The pin's per-solve iteration counts come from the unmodified binaries (`tests/circulation-solve/itertrace.c`, a ptrace breakpoint counter; traced outputs are bitwise those of the untraced runs). The port's come from `OFK_CS_ITERS`; both counters agree on the same binary.
+
+| | pin (base₁) | pin with FMA | F0 | F1 |
+|---|---|---|---|---|
+| iteration counts: bar-r8-tree (300 solves, 7720 it.), bar-r8-direct (300, 7718) | reference | 0 solves differ | 0 differ | **0 differ** |
+| iteration counts: r-test OLAF, 9 cases, 492 solves | reference | 0 of 287 differ (aerodyn_driver cases) | 0 differ | **0 differ** |
+| L0, 4 070 random cases | reference | 0 with another count | bitwise | 0 with another count; Γ within 1.1× the pin's FMA spread in 4 068 (2 near-line cases above) |
+| L0 knife edge (ConvCrit at the adjacent doubles where the pin's count changes), 16 solves per seed | reference | 2–5 flips | 0 | 2–6 flips |
+| R8 drift, worst ratio to the FMA envelope, bar-r8-tree / bar-r8-direct | 0 | (envelope 6.39e-13 / 2.60e-13) | 0.37 / 0.82 | **0.69 / 0.82**; 0 of 542 channels over 2× |
+| R6 (18 ctests) | 18/18 | — | 18/18 | **18/18** |
+| kernel time per solve, 8 threads (bar-r8-tree, 5 interleaved pairs) | 79.5 ms | — | 0.869–0.874 ms | **0.834–0.842 ms** |
+| kernel time per solve, 1 thread | 78.9 ms | — | 4.108–4.124 ms | **3.830–3.889 ms** |
+| whole run bar-r8-tree, 8 threads | 44.0 s | — | 16.93–17.36 s | 16.91–17.36 s |
+
+**Reading.**
+- The convergence test is a knife edge only in principle. In 600 BAR solves (15 438 iterations) and 492 r-test solves, neither F1 nor the pin built with FMA changed a single iteration count. In 4 070 random L0 cases neither did either.
+- Flips do happen when ConvCrit sits within a few ulp of a solve's convergence ratio. L0 constructs exactly that (bisection to adjacent doubles). There F1 flips 2–6 of 16 solves per seed, and the pin built with FMA flips 2–5. The shift is then 1.4e-5–3.2e-5 relative in Γ, as §0 predicted. So the hazard is real, and the Fortran has the same one under FMA: it belongs to the natural envelope, not to the port.
+- F1's system-level drift stays inside 2× the FMA envelope on every channel. The worst ratio is 0.69 on bar-r8-tree and 0.82 on bar-r8-direct, the same as F0's there (the other units' fast mode dominates). F1 alone, with the other units strict, drifts 5.6e-14 and 3.7e-14.
+- F1's kernel time per solve is 3.8% lower at 8 threads and 6.3% lower at 1 thread. The run-to-run ranges do not overlap. The whole run is the same within noise (±0.4 s).
+- **Decision, by the rule fixed in advance: F1.** F1 passed R6 and R8, and its solve time is lower beyond the noise. So the fast mode keeps FMA, consistent with architecture.md §3, and the exception proposed in §0 and §3.3 is not needed. F0 stays available (`OFK_CS_FMA=0`) and is bitwise with strict and the pin.
+- Caveat outside the rule: claim 3 per L0 case (≤ 1.1 × the pin's own FMA spread) fails in 2 of 4 070 random cases, both with control points on their own bound segment (cancellation in the cross product). No iteration count changed there. If the parent wants claim 3 as a condition, `kDefaultFma = 0` switches the default.
+
+**Result of 4a** (`tests/circulation-solve/unit.md`): the solve 80 → 1.5 ms per call (8 threads); `bar-r8-tree` 44.0 → 17.0 s and `bar-r8-direct` 128.2 → 50.8 s against pin+OpenMP; the A100 MIG `bar-r8-tree` 34.2 → 16.1 s. The §3.2 projection for 4a alone was 17.4 s for `bar-r8-tree`.
 
 ## 4. Corrections made elsewhere
 

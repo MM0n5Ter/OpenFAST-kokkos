@@ -30,7 +30,11 @@ add_library(ofk_kernels STATIC
   ${_ofk_dir}/src/induced_velocities.cpp
   ${_ofk_dir}/src/induced_velocities_pack.cpp
   ${_ofk_dir}/src/treecode_strict.cpp
-  ${_ofk_dir}/src/treecode_fast.cpp)
+  ${_ofk_dir}/src/treecode_fast.cpp
+  ${_ofk_dir}/src/circulation.cpp
+  ${_ofk_dir}/src/circulation_strict.cpp
+  ${_ofk_dir}/src/circulation_fast.cpp
+  ${_ofk_dir}/src/circulation_fastfma.cpp)
 target_include_directories(ofk_kernels PUBLIC $<BUILD_INTERFACE:${_ofk_dir}/src>)
 target_link_libraries(ofk_kernels PUBLIC Kokkos::kokkos)
 set_target_properties(ofk_kernels PROPERTIES
@@ -70,6 +74,21 @@ if(OFK_KOKKOS_CUDA)
 endif()
 set_source_files_properties(${OFK_STRICT_SOURCES} PROPERTIES COMPILE_OPTIONS "${_ofk_strict_opts}")
 set_source_files_properties(${OFK_FAST_SOURCES} PROPERTIES COMPILE_OPTIONS "${_ofk_fast_opts}")
+# Unit circulation-solve (host execution space only): one body, three TUs, for the FMA experiment
+# of its fast mode (tests/circulation-solve/unit.md), independent of OFK_FAST_FMA:
+#   circulation_strict.cpp   baseline ISA, no contraction             (strict)
+#   circulation_fast.cpp     OFK_FAST_HOST_FLAGS, no contraction      (fast, OFK_CS_FMA=0: F0)
+#   circulation_fastfma.cpp  OFK_FAST_HOST_FLAGS, contraction         (fast, OFK_CS_FMA=1: F1)
+# (--fmad only matters for device code, which these TUs do not have; stated for the rule above.)
+set(_ofk_cs_f0_opts -ffp-contract=off ${_ofk_fast_host_flags})
+set(_ofk_cs_f1_opts -ffp-contract=fast ${_ofk_fast_host_flags})
+if(OFK_KOKKOS_CUDA)
+  list(APPEND _ofk_cs_f0_opts --fmad=false)
+  list(APPEND _ofk_cs_f1_opts --fmad=true)
+endif()
+set_source_files_properties(${_ofk_dir}/src/circulation_strict.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_strict_opts}")
+set_source_files_properties(${_ofk_dir}/src/circulation_fast.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f0_opts}")
+set_source_files_properties(${_ofk_dir}/src/circulation_fastfma.cpp PROPERTIES COMPILE_OPTIONS "${_ofk_cs_f1_opts}")
 message(STATUS "ofk_kernels: Kokkos ${Kokkos_VERSION} (CUDA=${OFK_KOKKOS_CUDA}); "
                "strict TUs: ${_ofk_strict_opts}; fast TUs: ${_ofk_fast_opts}")
 

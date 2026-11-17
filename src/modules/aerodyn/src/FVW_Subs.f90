@@ -121,6 +121,9 @@ module FVW_SUBS
       subroutine ofk_iv_free(key) bind(C, name='ofk_iv_free')
          type(*),        intent(in) :: key
       end subroutine ofk_iv_free
+      subroutine ofk_cs_free(key) bind(C, name='ofk_cs_free')   ! unit circulation-solve (FVW_Wings)
+         type(*),        intent(in) :: key
+      end subroutine ofk_cs_free
       subroutine ofk_iv_tree_build(key, rk, degenerate) bind(C, name='ofk_iv_tree_build')
          import :: c_int
          type(*),        intent(in) :: key
@@ -140,7 +143,7 @@ module FVW_SUBS
       end function ofk_tc_enabled
    end interface
    private :: OFK_RK, ofk_iv_use_lattice, ofk_iv_lattice, ofk_iv_sources_lattice, ofk_iv_sources_packed
-   private :: ofk_iv_sources_valid, ofk_iv_eval, ofk_iv_free, ofk_iv_reserve
+   private :: ofk_iv_sources_valid, ofk_iv_eval, ofk_iv_free, ofk_iv_reserve, ofk_cs_free
    private :: ofk_iv_set_sources, ofk_iv_sources_from_packed, ofk_iv_direct, ofk_iv_cap_seg, ofk_iv_cap_part
    private :: ofk_iv_tree_build, ofk_iv_eval_tree, ofk_tc_enabled, ofk_tc_grow, ofk_tc_ui
    private :: c_int, c_long_long
@@ -1467,9 +1470,11 @@ subroutine ofk_tc_ui(nCPs, CPs, Uind, Sgmt, Part, BranchFactor, DistanceDirect)
 end subroutine ofk_tc_ui
 
 !> Release the instance's device handle (called by FVW_End). Safe if there is none.
+!! Also the handle of unit circulation-solve (FVW_Wings), which uses the same key.
 subroutine FVW_Kokkos_Release(m)
    type(FVW_MiscVarType), intent(in) :: m
    call ofk_iv_free(m%Sgmt)
+   call ofk_cs_free(m%Sgmt)
 end subroutine FVW_Kokkos_Release
 #endif
 

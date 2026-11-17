@@ -61,6 +61,13 @@ Build facts from unit 1, which still hold:
   - `omp simd` on the lane loop;
   - the Fortran's far-field `exp` skip kept (a vector `exp` on every pair was slower);
   - checked with `-fopt-info-vec`.
+- **Discrete decisions downstream of a kernel (convergence tests, iteration caps) do not by themselves justify an FMA-free fast mode** *(unit 4a, measured 2026-11-17)*. The unit-4 analysis expected that ulp changes would flip OLAF's circulation-convergence test and move Γ by up to `ConvCrit`·|Γ|, and proposed FMA-free fast mode for that kernel as an exception to this section. Measured on the pin itself and on the port (`tests/circulation-solve/unit.md`, FMA experiment):
+  - with FMA, neither the port nor the pin changed one iteration count in 600 BAR solves, the r-test OLAF cases or 4 070 random L0 cases;
+  - flips appear only when ConvCrit is put within ulps of a solve's ratio, and then the pin built with FMA flips just as often;
+  - the drift stayed inside 2× the FMA envelope;
+  - the FMA variant was faster beyond noise (kernel 4–6%).
+  - By the decision rule fixed in advance, the fast mode keeps FMA (`OFK_CS_FMA=1`), consistent with this section. The FMA-free variant stays available (`OFK_CS_FMA=0`) and is bitwise with strict and the pin, including iteration counts.
+  - Rule for later units: measure the Fortran's own FMA build on the same decision before declaring an exception. The hazard belongs to the natural envelope.
 - **CPU↔GPU bitwise is not a goal** (user decision, 2026-11-14). Getting it would cost GPU speed, through portable math and a fixed order. Strict mode on the GPU is still useful: it isolates math-library differences from ordering differences.
 
 ## 4. Equivalence: a chain of claims, each with its own test
@@ -108,5 +115,7 @@ Below a measured `N_min`, a unit runs in the host execution space (P4). Same sou
 | 3. `treecode` (`grow_tree_part`, `ui_tree_part`; segment variant deferred). **Done 2026-11-15**; GPU timing sweeps pending. | The irregular pattern: a flat preorder tree with skip pointers (stackless, visits in the Fortran's order); a level-synchronous device build with the Fortran's topology (integer partitions, fixed-tree sums, no sort library, no atomics); the speedup on OLAF's default path | Class R2 against the direct sum (ratio 0.909 = same tree); claims 1–3, R7, R8, P2, P6, A1/A2/A5/A7 pass on CPU and A100 (`tests/treecode/unit.md`); P1/P5 sweep up to 10⁶ particles (CPU done, GPU queued) |
 
 Deferred until after the three: phase-2 residency (wake time-stepping, F3/F4/F9), the host-side circulation solve (F10), and VTK/IO.
+
+**Unit 4a `circulation-solve` (ported 2026-11-17, `tests/circulation-solve/unit.md`):** F10-B in the Kokkos host space; strict and F0 bitwise with the pin including per-solve iteration counts; the BAR solve 80 ms → 1.5 ms per call (8 threads), whole runs 2.5–2.6× faster than pin+OpenMP on CPU and 2.1× on the A100 MIG slice.
 
 **Unit 4 (analysis 2026-11-17, [olaf-unit4.md](olaf-unit4.md)):** the profile picks the host circulation solve (F10-B, class B, Kokkos host space) and the wind-point host work in AeroDyn/InflowWind. Phase-2 residency stays deferred: wake time-stepping is ≤ 0.25% of the runs. Draft card: `tests/circulation-solve/unit.md`.
